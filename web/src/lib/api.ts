@@ -40,6 +40,7 @@ export type Job = {
   live?: boolean;
   end?: boolean;
   live_fps?: number;
+  view_fps?: number;
   risk?: string;
   warning?: string;
   bleeding?: boolean;

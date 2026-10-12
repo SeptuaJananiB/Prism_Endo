@@ -293,7 +293,7 @@ export default function App() {
                 <div className="flex items-center gap-2.5">
                   <span className="relative flex h-2.5 w-2.5" aria-hidden><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-err opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-err" /></span>
                   <h2 className="m-0 text-[14px] font-semibold">Live analysis</h2>
-                  <span className="text-xs text-muted tabular">{liveJob.status === "running" ? `${liveJob.done} frames · ${liveJob.live_fps ?? "–"} fps` : liveJob.phase ?? "Starting camera…"}</span>
+                  <span className="text-xs text-muted tabular">{liveJob.status === "running" ? `view ${liveJob.view_fps ?? "–"} fps · analysis ${liveJob.live_fps ?? "–"} fps · ${liveJob.done} analysed` : liveJob.phase ?? "Starting camera…"}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {liveJob.risk && <span className="chip" style={{ color: "var(--ink)", background: "var(--surface-2)" }}><span className="h-2 w-2 rounded-full" style={{ background: RISK_VAR[liveJob.risk] }} aria-hidden />Risk: {liveJob.risk}</span>}

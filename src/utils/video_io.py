@@ -74,7 +74,7 @@ class FrameSource:
 
     def __init__(self, source: str | Path, fps: float | None = None,
                  max_frames: int | None = None, stride: int = 1,
-                 image_pattern: str | None = None):
+                 image_pattern: str | None = None, live_max_width: int | None = 854):
         self.live = live_target(source)
         self.source = Path(str(source)) if self.live is None else str(source)
         self.max_frames = max_frames
@@ -91,9 +91,12 @@ class FrameSource:
                 raise IOError(f"No frames from live source {source} (camera busy, wrong index or URL?)")
             self._cap = cap
             self._first = first
+            self.live_max_width = int(live_max_width) if live_max_width else 0
+            self.on_capture = None  # set by the caller: called with every captured (downscaled) frame
             reported = cap.get(cv2.CAP_PROP_FPS)
             self.fps = float(fps or (reported if reported and 1 < reported <= 120 else 30.0))
-            self.height, self.width = first.shape[:2]
+            self.height, self.width = self._small(first).shape[:2]
+            self.camera_size = (first.shape[1], first.shape[0])
             self.total_source_frames = 0  # unknown: runs until stopped (or max_frames)
         elif self.source.is_dir():
             self.kind = "images"
@@ -149,27 +152,67 @@ class FrameSource:
             out_idx += 1
 
     def _iter_live(self) -> Iterator[Frame]:
-        """Real-time capture: timestamps from the wall clock; always the NEWEST frame (stale buffered frames are
-        dropped), so a slower pipeline stays in sync with what the camera shows now."""
+        """Real-time capture. A background thread reads the camera at its own frame rate (30/60 fps), keeps only the
+        NEWEST frame for analysis (older ones are dropped, so a slower analysis never lags behind) and hands EVERY
+        frame to `on_capture` for a smooth live display. Frames are downscaled to `live_max_width` (default 854 px,
+        the resolution the models were trained at) - large webcam frames otherwise slow every stage down."""
+        import threading
         import time
 
-        cap, t0, out_idx, src_idx = self._cap, time.perf_counter(), 0, 0
-        img = self._first
+        cap, t0 = self._cap, time.perf_counter()
+        lock, fresh, stop = threading.Lock(), threading.Event(), threading.Event()
+        latest: dict = {"img": self._small(self._first), "n": 0}
+        fresh.set()
+
+        def reader():
+            n = 0
+            while not stop.is_set():
+                ok, img = cap.read()
+                if not ok:
+                    break
+                n += 1
+                small = self._small(img)
+                with lock:
+                    latest["img"], latest["n"] = small, n
+                fresh.set()
+                cb = self.on_capture
+                if cb is not None:
+                    try:
+                        cb(small)
+                    except Exception:  # display problems must never stop the capture
+                        pass
+            stop.set()
+            fresh.set()
+
+        th = threading.Thread(target=reader, daemon=True, name="live-capture")
+        th.start()
+        out_idx = 0
         try:
-            while True:
+            while not stop.is_set() or fresh.is_set():
                 if self.max_frames is not None and out_idx >= self.max_frames:
                     break
+                fresh.wait(timeout=2.0)
+                with lock:
+                    img, n = latest["img"], latest["n"]
+                    latest["img"] = None
+                    fresh.clear()
                 if img is None:
-                    cap.grab()  # drop one queued frame, then decode the latest
-                    ok, img = cap.read()
-                    if not ok:
+                    if stop.is_set():
                         break
-                yield Frame(out_idx, src_idx, time.perf_counter() - t0, img, f"live_{src_idx:06d}")
+                    continue
+                yield Frame(out_idx, n, time.perf_counter() - t0, img, f"live_{n:06d}")
                 out_idx += 1
-                src_idx += 1
-                img = None
         finally:
+            stop.set()
+            th.join(timeout=2.0)
             cap.release()
+
+    def _small(self, img):
+        w = img.shape[1]
+        if self.live_max_width and w > self.live_max_width:
+            h = int(round(img.shape[0] * self.live_max_width / w))
+            return cv2.resize(img, (self.live_max_width, h), interpolation=cv2.INTER_AREA)
+        return img
 
     def _iter_video(self) -> Iterator[Frame]:
         cap = cv2.VideoCapture(str(self.source))
@@ -280,6 +323,9 @@ def _open_live(target: int | str):
     else:
         cap = cv2.VideoCapture(target)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    if isinstance(target, int):
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))  # MJPG unlocks 30/60 fps on most webcams
+        cap.set(cv2.CAP_PROP_FPS, 60)
     if not cap.isOpened():
         raise IOError(f"Could not open live source {target}")
     return cap

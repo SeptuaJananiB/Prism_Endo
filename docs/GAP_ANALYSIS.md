@@ -39,7 +39,7 @@ reviewer can act on**.
 | G5 | Every tissue marked tested / barely tested / not tested on unseen patients; low-confidence tips flagged | ✅ Addressed |
 | G6 | Patient-level splits, held-out-only reporting, leakage audit and a leakage-free re-evaluation | ✅ Addressed |
 | G7 | **Time-to-contact early warning** (distance ÷ approach speed) with on-video alert, events and timeline track | ✅ Addressed (estimate, not validated) |
-| G8 | **Live capture** from a webcam / capture card / stream URL with OpenCV, live annotated view in the browser | ✅ Addressed (~6 fps, not full video rate) |
+| G8 | **Live capture** from a webcam / capture card / stream URL with OpenCV, live annotated view in the browser | ✅ Addressed (30 fps per-frame tracking + keyframe models) |
 | G9 | Reviewer flags collect expert agreement and corrections as the start of a labelled dataset | ⚠️ Started |
 | G10 | Synced timeline, events, milestones, compare, printable summary, read-aloud explanation | ✅ Addressed |
 | G11 | Surgery-type selection with a second tissue model trained on other operations (DSAD) | ⚠️ Partly addressed |
@@ -50,8 +50,8 @@ reviewer can act on**.
    score and time-to-contact warning are research estimates.
 2. **Critical structures** — cystic duct, cystic artery and common bile duct need more labelled data before any
    guidance about them is possible.
-3. **Full real-time rate** — ~6 fps live today; 25–30 fps needs model optimisation (smaller models, ONNX / TensorRT,
-   frame-parallel inference).
+3. **Full models on every frame** — live mode reaches 30 fps by tracking between keyframes (~4–6 fps); running
+   every model on every frame would need model optimisation (smaller models, ONNX / TensorRT).
 4. **Calibrated measurement** — true millimetres need camera calibration or depth estimation.
 5. **Clinical validation** — prospective review by surgeons ([CLINICAL_REVIEW_PACKAGE.md](CLINICAL_REVIEW_PACKAGE.md)).
 
@@ -62,4 +62,4 @@ reviewer can act on**.
 | Identify gaps in surgical risk prediction | ✅ This document |
 | Extract, track and analyse tool motion and tissue proximity | ✅ Pipeline stages 1–5 |
 | Predict pre-injury risk and generate visual warnings | ✅ Risk score + time-to-contact warning, on-video alerts, timeline and events (research estimate) |
-| Real-time endoscopic video capture using OpenCV | ✅ Live camera / capture card / stream capture with live view (~6 fps on a laptop GPU) |
+| Real-time endoscopic video capture using OpenCV | ✅ Live camera / capture card / stream capture, 30 fps per-frame analysis |

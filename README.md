@@ -53,7 +53,7 @@
 | Identify gaps in surgical risk prediction | ✅ Done | [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) |
 | Extract, track and analyse tool motion and tissue proximity | ✅ Done | pipeline stages 1–5 below |
 | Predict pre-injury risk and generate visual warnings | ✅ Done | risk score + time-to-contact warning (stage 6) |
-| Real-time endoscopic video capture using OpenCV | ✅ Done | live capture (stage 8) |
+| Real-time endoscopic video capture using OpenCV | ✅ Done | live capture at 30 fps (stage 8) |
 
 ## Why PRISM-Endo
 
@@ -180,7 +180,19 @@ Categories: **Minimal** < 0.25 ≤ **Low** < 0.5 ≤ **Medium** < 0.75 ≤ **Hig
 OpenCV opens a **webcam or capture card** (`camera:0`) or a **stream URL** (`rtsp://`, `http://`). Frames are read
 as they arrive — stale buffered frames are dropped so the analysis stays in sync with the camera — and each annotated
 frame is streamed to the browser as a live view, with the current risk and any contact warning. **Finish & save**
-keeps the session as a normal analysis; **Discard** throws it away. On a laptop GPU this runs at about 6 frames/s.
+keeps the session as a normal analysis; **Discard** throws it away.
+
+**30 fps live analysis — keyframes + tracking.** Running every model on every frame is too slow for live video, so
+live mode splits the work:
+
+| Layer | Rate (laptop GPU, measured) | What runs |
+|---|---|---|
+| **Per-frame** | **30 fps** (camera rate) | Lucas-Kanade optical-flow tip tracking, distance to tissue from cached distance maps, speed, approach speed, **time to contact**, contact warning, drawing |
+| **Keyframes** | ~4–6 fps | full models: instrument + tissue segmentation, tips, bleeding, CVS — re-anchor the tracked tips |
+
+Frames are captured on a dedicated thread (newest frame always used, downscaled to 854 px), drawing and JPEG encoding
+run on a separate display thread, and every per-frame result is logged to `live_fast.csv`. Measured with a paced
+720p camera feed: 29–30 fps on a 30 fps camera and 30.0 fps sustained on a 60 fps camera.
 
 ### 9. AI explanation (gpt-oss)
 A compact, **numbers-only** summary of the analysis (risk timeline, events, bleeding, CVS, instruments, settings —
@@ -277,7 +289,8 @@ cd web; npm run test:e2e                  # browser tests (server running)
 
 | Measure | Value (AMD RX 6800M laptop GPU) |
 |---|---|
-| Processing | ~5–6 frames/s |
+| Recorded-video analysis (all models, every frame) | ~5–6 frames/s |
+| Live analysis (per-frame tracking + keyframes) | **30 fps** per frame, keyframes ~4–6 fps |
 | Start an analysis after a settings change | ~0.3 s (models cached) |
 | Stop an analysis | ~0.2 s |
 | AI explanation | ~2 s |

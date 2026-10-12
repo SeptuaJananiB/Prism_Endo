@@ -127,7 +127,8 @@ class PrismPipeline:
                                                  self.device if bcfg.get("use_gpu", True) else "cpu"))
         self.should_stop: Callable[[], bool] = lambda: False   # set by the UI server: Stop button
         self.end_stream: Callable[[], bool] = lambda: False    # live capture: finish and SAVE the run
-        self.on_frame: Callable | None = None                 # live view: called with (annotated_bgr, row)
+        self.on_frame: Callable | None = None                 # live view: called with (annotated_bgr, row, raw_bgr)
+        self.on_capture: Callable | None = None               # live view: every captured camera frame (display rate)
         wcfg = (cfg.get("risk", {}) or {})
         self.ttc_warn_s = float(wcfg.get("pre_contact_warning_s", 1.0))      # warn when contact is predicted within this
         self.ttc_min_speed = float(wcfg.get("pre_contact_min_approach_px_s", 20.0))
@@ -242,8 +243,11 @@ class PrismPipeline:
         self.on_phase("Preparing")
         if self.should_stop():
             raise Stopped()
-        frames = FrameSource(source if live_target(source) is not None else src_path, fps=icfg.get("fps"), max_frames=icfg.get("max_frames"),
+        frames = FrameSource(source if live_target(source) is not None else src_path, fps=icfg.get("fps"),
+                             live_max_width=icfg.get("live_max_width", 854), max_frames=icfg.get("max_frames"),
                              stride=icfg.get("stride", 1))
+        if getattr(frames, "kind", "") == "live":
+            frames.on_capture = self.on_capture
         if live_target(source) is not None:  # live capture: name the run by date and time
             video_id = "live_" + time.strftime("%Y%m%d_%H%M%S")
         else:
@@ -419,7 +423,8 @@ class PrismPipeline:
                         vis = draw_contact_warning(vis, row["pre_contact_detail"], fr.index)
                     writer.write(vis)
                     if self.on_frame is not None:
-                        self.on_frame(vis, row)
+                        self.last_labels = (inst_labels, tissue_labels, kp_names)
+                        self.on_frame(vis, row, fr.image)
                 if orig_writer is not None:
                     orig_writer.write(fr.image)
                 t4 = time.perf_counter()

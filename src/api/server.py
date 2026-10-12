@@ -61,6 +61,7 @@ def _stats(d: Path) -> dict:
 app = FastAPI(title="PRISM-Endo API")
 JOBS: dict[str, dict] = {}
 LIVE_FRAMES: dict[str, bytes] = {}  # job id -> latest annotated JPEG (live view)
+FAST: dict[str, object] = {}        # job id -> FastLive tracker (kept out of the JSON job record)
 _PIPES: dict[str, object] = {}
 _LOCK = threading.Lock()
 
@@ -310,8 +311,16 @@ def _work(job_id: str, req: RunRequest):
 
         live = live_target(req.source) is not None
         job["live"] = live
-        if live:  # real-time preset: lighter tissue cadence, DLC cannot pre-analyse a live stream
-            cfg.setdefault("tissue", {})["every_n_frames"] = max(2, int(cfg.get("tissue", {}).get("every_n_frames", 1)))
+        if live:  # real-time preset: lighter cadences, no second video, DLC cannot pre-analyse a live stream
+            cfg.setdefault("tissue", {})["every_n_frames"] = max(3, int(cfg.get("tissue", {}).get("every_n_frames", 1)))
+            cfg.setdefault("output", {})["write_original_video"] = False
+            cfg.setdefault("segmentation", {})["upsample"] = "nearest"
+            sf = cfg.setdefault("safety", {})
+            sf.setdefault("cvs", {})["every_s"] = max(3.0, float(sf.get("cvs", {}).get("every_s", 1.0)))
+            lms = cfg["keypoints"].setdefault("mask_tip_landmarks", {}) or {}
+            if "grasper" in lms:  # coarser geodesic search for the grasper hinge (4x fewer pixels per axis)
+                lms["grasper"] = {**lms["grasper"], "step": max(4, int(lms["grasper"].get("step", 2)))}
+            sf.setdefault("bleeding", {})["every_s"] = max(1.0, float(sf.get("bleeding", {}).get("every_s", 0.5)))
             if cfg["keypoints"]["source"] in ("hybrid", "dlc", "auto"):
                 cfg["keypoints"]["source"] = "mask_tip"
         if req.targets:
@@ -326,19 +335,49 @@ def _work(job_id: str, req: RunRequest):
         pipe.on_phase = lambda ph: job.update(phase=ph)
         pipe.end_stream = lambda: bool(job.get("end"))
         if live:
-            t_live = [time.perf_counter()]
+            import sys as _sys
 
-            def on_frame(vis, row):
-                ok, buf = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 78])
-                if ok:
-                    LIVE_FRAMES[job_id] = buf.tobytes()
+            from src.api.live_fast import FastLive
+
+            _sys.setswitchinterval(0.001)  # switch threads every 1 ms so camera capture is never starved
+
+            rk = cfg.get("risk", {}) or {}
+            fast = FastLive(float(rk.get("pre_contact_warning_s", 1.0)), float(rk.get("pre_contact_min_approach_px_s", 20.0)),
+                            out_csv=tmp / "live_fast.csv")
+            FAST[job_id] = fast
+            st = {"t_an": time.perf_counter(), "an_fps": 0.0}
+
+            def on_frame(vis, row, raw):
+                # keyframe: full analysis result re-anchors the per-frame tracker
+                inst_l, tis_l, kp_names = getattr(pipe, "last_labels", (None, None, []))
+                fast.keyframe(raw, row, inst_l, tis_l, pipe.tissue.class_names, pipe.targets, kp_names)
                 now = time.perf_counter()
-                job.update(live_fps=round(1.0 / max(1e-3, now - t_live[0]), 1), risk=row.get("risk_category"),
-                           warning=row.get("pre_contact_detail") or "", bleeding=bool(row.get("bleeding_detected")))
-                t_live[0] = now
-            pipe.on_frame = on_frame
+                st["an_fps"] = 0.8 * st["an_fps"] + 0.2 / max(1e-3, now - st["t_an"])
+                st["t_an"] = now
+                job.update(live_fps=round(st["an_fps"], 1), risk=row.get("risk_category"),
+                           bleeding=bool(row.get("bleeding_detected")))
+
+            def on_capture(frame):
+                # capture thread, every camera frame: tracking + distance / speed / time to contact (~2 ms)
+                info = fast.frame(frame)
+                job.update(view_fps=info["fps"], warning=info["warning"])
+
+            def display():
+                # display thread: draw + JPEG-encode the newest tracked frame (kept off the capture path)
+                last = -1
+                while JOBS.get(job_id, {}).get("status") in ("queued", "loading", "running"):
+                    out, n = fast.render()
+                    if out is not None and n != last:
+                        ok, buf = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                        if ok:
+                            LIVE_FRAMES[job_id] = buf.tobytes()
+                        last = n
+                    else:
+                        time.sleep(0.004)
+            threading.Thread(target=display, daemon=True, name="live-display").start()
+            pipe.on_frame, pipe.on_capture = on_frame, on_capture
         else:
-            pipe.on_frame = None
+            pipe.on_frame = pipe.on_capture = None
         job["status"] = "running"
 
         def progress(i, n):
@@ -349,6 +388,8 @@ def _work(job_id: str, req: RunRequest):
         if job.get("cancel"):
             raise Cancelled()
         summary = pipe.run(req.source if live else resolve_path(req.source), tmp, progress)
+        if job_id in FAST:  # close the per-frame log before the folder is moved (Windows file locks)
+            FAST.pop(job_id).close()
         name = _finalise(tmp, str(summary.get("video_id") or Path(req.source).stem))
         job.update(status="finished", run=name, finished=time.time())
     except Cancelled:
@@ -357,6 +398,8 @@ def _work(job_id: str, req: RunRequest):
         job.update(status="failed", error=str(e))
     finally:
         LIVE_FRAMES.pop(job_id, None)
+        if job_id in FAST:
+            FAST.pop(job_id).close()
         if tmp.exists():  # stopped or failed: never leave partial results behind
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -429,7 +472,7 @@ def live_stream(job_id: str):
                 last = buf
                 yield (b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(buf)).encode()
                        + b"\r\n\r\n" + buf + b"\r\n")
-            time.sleep(0.03)
+            time.sleep(0.008)  # up to ~120 updates/s; the stream follows the camera's own rate
     return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame",
                              headers={"Cache-Control": "no-cache"})
 
