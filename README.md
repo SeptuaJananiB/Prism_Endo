@@ -18,10 +18,6 @@
 
 </div>
 
-> [!WARNING]
-> **Research software — not a medical device and not clinically validated.** Distances and speeds are image-space
-> pixels unless marked *approximate*; the risk score is a rule-based research indicator, not a probability of injury.
-> Do not use it to make clinical decisions.
 
 ---
 
