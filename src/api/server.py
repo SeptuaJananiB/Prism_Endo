@@ -343,7 +343,7 @@ def _work(job_id: str, req: RunRequest):
 
             rk = cfg.get("risk", {}) or {}
             fast = FastLive(float(rk.get("pre_contact_warning_s", 1.0)), float(rk.get("pre_contact_min_approach_px_s", 20.0)),
-                            out_csv=tmp / "live_fast.csv")
+                            out_csv=tmp / "live_fast.csv", risk_cfg=rk)
             FAST[job_id] = fast
             st = {"t_an": time.perf_counter(), "an_fps": 0.0}
 
@@ -354,13 +354,13 @@ def _work(job_id: str, req: RunRequest):
                 now = time.perf_counter()
                 st["an_fps"] = 0.8 * st["an_fps"] + 0.2 / max(1e-3, now - st["t_an"])
                 st["t_an"] = now
-                job.update(live_fps=round(st["an_fps"], 1), risk=row.get("risk_category"),
+                job.update(live_fps=round(st["an_fps"], 1),
                            bleeding=bool(row.get("bleeding_detected")))
 
             def on_capture(frame):
                 # capture thread, every camera frame: tracking + distance / speed / time to contact (~2 ms)
                 info = fast.frame(frame)
-                job.update(view_fps=info["fps"], warning=info["warning"])
+                job.update(view_fps=info["fps"], warning=info["warning"], risk=info["risk"])  # risk of THIS frame
 
             def display():
                 # display thread: draw + JPEG-encode the newest tracked frame (kept off the capture path)

@@ -27,8 +27,16 @@ RISK_BGR = {"Minimal": (91, 154, 58), "Low": (74, 191, 156), "Medium": (32, 160,
 
 
 class FastLive:
-    def __init__(self, warn_s: float = 1.0, min_approach_px_s: float = 20.0, out_csv: Path | None = None):
+    def __init__(self, warn_s: float = 1.0, min_approach_px_s: float = 20.0, out_csv: Path | None = None,
+                 risk_cfg: dict | None = None):
         self.warn_s, self.min_approach = warn_s, min_approach_px_s
+        # per-frame risk: same rule-based formula and config as the full pipeline (src/risk/rule_based.py)
+        self.rc = {"proximity_ref_frac": 0.08, "gate_mult": 2.0, "speed_ref_frac_per_s": 0.6, "approach_ref_frac_per_s": 0.3,
+                   "accel_ref_frac_per_s2": 12.0, "weights": {"proximity": 0.5, "approach": 0.2, "speed": 0.15, "abrupt": 0.15},
+                   "smoothing_alpha": 0.4, "thresholds": {"low": 0.25, "medium": 0.5, "high": 0.75}, **(risk_cfg or {})}
+        self.diag = None
+        self.score: float | None = None
+        self.why = ""
         self.tips: dict[str, np.ndarray] = {}          # name -> (x, y) float32
         self.prev_gray: np.ndarray | None = None
         self.overlay: np.ndarray | None = None          # colour layer of the latest keyframe masks
@@ -85,12 +93,14 @@ class FastLive:
             if x is not None and y is not None and x == x and st in ("ok", "low_confidence"):
                 tips[n] = np.array([x, y], np.float32)
         gray = cv2.cvtColor(raw, cv2.COLOR_BGR2GRAY)
-        with self.lock:  # swap in (re-anchors the tracked tips to the keyframe detections)
+        with self.lock:
+            self.diag = float(np.hypot(h, w))  # swap in (re-anchors the tracked tips to the keyframe detections)
             self.overlay, self.overlay_mask = layer, mask
             self.dist_maps, self.inside_maps = dm, im
             self.tips = tips
             self.prev_gray = gray
-            self.risk = row.get("risk_category") or "Unavailable"
+            if self.score is None:  # until the first tracked frame, show the keyframe's risk
+                self.risk = row.get("risk_category") or "Unavailable"
             num = lambda v: None if v is None or v != v else float(v)
             self.info = {"risk_score": num(row.get("risk_score")), "bleeding": bool(row.get("bleeding_detected")),
                          "cvs": bool(row.get("cvs_achieved")), "explanation": row.get("risk_explanation") or "",
@@ -135,7 +145,10 @@ class FastLive:
                 approach = (s["dist"] - near[1]) / dt
                 s["approach"] = 0.7 * s.get("approach", approach) + 0.3 * approach
                 spd = float(np.hypot(*(p - s["p"]))) / dt
-                s["speed"] = 0.7 * s.get("speed", spd) + 0.3 * spd
+                prev_spd = s.get("speed", spd)
+                s["speed"] = 0.7 * prev_spd + 0.3 * spd
+                acc = abs(s["speed"] - prev_spd) / dt
+                s["accel"] = 0.7 * s.get("accel", acc) + 0.3 * acc
             s = {**(s or {}), "p": p.copy(), "target": near[0] if near else None, "dist": near[1] if near else None}
             self.state[n] = s
             if near:
@@ -146,16 +159,61 @@ class FastLive:
         for n in list(self.state):
             if n not in self.tips:
                 self.state.pop(n)
+        self._frame_risk()
 
         warning = ""
         if best:
             who = best[1].replace("_tip", " tip").replace("_", " ")
             warning = f"{who} touching {best[2]}" if best[0] <= 0.05 else f"{who} -> {best[2]} in {best[0]:.1f} s"
         self.latest = (img, {n: p.copy() for n, p in self.tips.items()}, warning, self.frames)
-        info = {"fps": round(self.fps, 1), "warning": warning, "tips": len(self.tips)}
+        info = {"fps": round(self.fps, 1), "warning": warning, "tips": len(self.tips), "risk": self.risk, "risk_score": self.score}
         self._log(now, best, warning)
         self._sample(now, warning)
         return info
+
+    def _frame_risk(self) -> None:
+        """Risk for THIS frame from the tracked tips (rule-based score, EMA smoothed per tip; frame = worst tip)."""
+        c, w = self.rc, self.rc["weights"]
+        diag = self.diag or 1.0
+        clip = lambda v: max(0.0, min(1.0, v))
+        best = None
+        for n, s in self.state.items():
+            d = s.get("dist")
+            f_speed = clip((s.get("speed") or 0.0) / diag / c["speed_ref_frac_per_s"])
+            f_abrupt = clip((s.get("accel") or 0.0) / diag / c["accel_ref_frac_per_s2"])
+            if d is not None:
+                dn = d / diag
+                f_prox = 1.0 if d <= 0 else clip(1.0 - dn / c["proximity_ref_frac"])
+                gate = 1.0 if d <= 0 else clip(1.0 - dn / (c["gate_mult"] * c["proximity_ref_frac"]))
+                f_app = clip(max(0.0, s.get("approach") or 0.0) / diag / c["approach_ref_frac_per_s"])
+                parts = {"proximity": w["proximity"] * f_prox, "approach": gate * w["approach"] * f_app,
+                         "speed": gate * w["speed"] * f_speed, "abrupt": gate * w["abrupt"] * f_abrupt}
+            else:  # no target tissue visible: motion only
+                den = w["speed"] + w["abrupt"]
+                parts = {"speed": w["speed"] * f_speed / den, "abrupt": w["abrupt"] * f_abrupt / den}
+            raw = clip(sum(parts.values()))
+            a = c["smoothing_alpha"]
+            s["risk"] = raw if s.get("risk") is None else a * raw + (1 - a) * s["risk"]
+            if best is None or s["risk"] > best[0]:
+                best = (s["risk"], n, s, parts)
+        if best is None:
+            self.score, self.risk, self.why = None, "Unavailable", "no tracked instrument tip"
+            return
+        th = c["thresholds"]
+        sc = best[0]
+        self.score = round(sc, 4)
+        self.risk = "High" if sc >= th["high"] else "Medium" if sc >= th["medium"] else "Low" if sc >= th["low"] else "Minimal"
+        n, s, parts = best[1], best[2], best[3]
+        bits = []
+        if s.get("dist") is not None:
+            bits.append(f"tip {s['dist']:.0f}px from {s.get('target')} (+{parts['proximity']:.2f})")
+        if parts.get("approach", 0) >= 0.03:
+            bits.append(f"approaching {s.get('approach', 0):.0f}px/s (+{parts['approach']:.2f})")
+        if parts.get("speed", 0) >= 0.03:
+            bits.append(f"moving {s.get('speed', 0):.0f}px/s (+{parts['speed']:.2f})")
+        if parts.get("abrupt", 0) >= 0.03:
+            bits.append(f"abrupt change (+{parts['abrupt']:.2f})")
+        self.why = f"{n}: {self.risk} - " + ("; ".join(bits) or "no nearby tissue, slow motion")
 
     def _event(self, t: float, kind: str, label: str) -> None:
         self.events.append({"t": round(t, 2), "kind": kind, "label": label})
@@ -185,14 +243,14 @@ class FastLive:
             d, a = s.get("dist"), s.get("approach", 0.0)
             ttc = None if d is None else (0.0 if d <= 0 else (d / a if a > self.min_approach else None))
             tips[n] = {"dist": r(d), "speed": r(s.get("speed")), "approach": r(a), "ttc": r(ttc), "target": s.get("target")}
-        self.series.append({"t": round(t, 3), "frame": self.frames, "risk": self.risk, "score": self.info.get("risk_score"),
+        self.series.append({"t": round(t, 3), "frame": self.frames, "risk": self.risk, "score": self.score,
                             "warning": warning, "bleeding": bool(self.info.get("bleeding")), "tips": tips})
 
     def snapshot(self, since: int = 0) -> dict:
         """Live charts / events / readouts: every frame after frame number `since` (series[i] is frame i + 1)."""
         with self.lock:
             return {"series": self.series[max(0, int(since)):], "events": list(self.events),
-                    "info": dict(self.info), "risk": self.risk, "fps": round(self.fps, 1)}
+                    "info": {**self.info, "risk_score": self.score, "explanation": self.why}, "risk": self.risk, "fps": round(self.fps, 1)}
 
     def render(self):
         """Draw the newest tracked frame (called from the display thread, not the capture thread)."""
@@ -227,7 +285,7 @@ class FastLive:
             self.out_csv.parent.mkdir(parents=True, exist_ok=True)
             self._csv = open(self.out_csv, "w", newline="", encoding="utf-8")
             self._w = csv.writer(self._csv)
-            self._w.writerow(["t_s", "tip", "x", "y", "target", "distance_px", "approach_px_s", "speed_px_s", "ttc_s", "warning"])
+            self._w.writerow(["t_s", "tip", "x", "y", "target", "distance_px", "approach_px_s", "speed_px_s", "ttc_s", "warning", "risk_category", "risk_score"])
         t = round(now - self.t0, 3)
         for n, s in self.state.items():
             ttc = ""
@@ -236,7 +294,7 @@ class FastLive:
                 ttc = 0.0 if s["dist"] <= 0 else (round(s["dist"] / a, 2) if a > self.min_approach else "")
             self._w.writerow([t, n, round(float(s["p"][0]), 1), round(float(s["p"][1]), 1), s.get("target"),
                               None if s.get("dist") is None else round(s["dist"], 1),
-                              round(s.get("approach", 0.0), 1), round(s.get("speed", 0.0), 1), ttc, warning])
+                              round(s.get("approach", 0.0), 1), round(s.get("speed", 0.0), 1), ttc, warning, self.risk, self.score])
 
     def close(self) -> None:
         if self._csv is not None:
