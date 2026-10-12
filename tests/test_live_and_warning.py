@@ -45,3 +45,4 @@ def test_fast_live_tracks_tip_and_warns_on_approach():
     assert snap["series"][-1]["tips"]["grasper_tip"]["target"] == "liver"
     assert any(e["kind"] == "Risk" for e in snap["events"])
     assert fl.snapshot(since=snap["series"][-1]["t"])["series"] == []
+    assert len(snap["series"]) == 11 and snap["series"][-1]["frame"] == 11   # one sample per tracked frame

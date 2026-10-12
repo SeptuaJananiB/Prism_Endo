@@ -9,7 +9,7 @@ const tipName = (n: string) => n.replace(/(lhook|grasper)_tip(_2)?/g, (_m, k, tw
 const nice = (s?: string | null) => (s ?? "").replace(/_/g, " ");
 const fmt = (v: number | null | undefined, d = 0) => (v == null ? "–" : v.toFixed(d));
 
-/** Live session: per-tip readouts, rolling charts (last 60 s) and event log, updated twice a second. */
+/** Live session: per-tip readouts, rolling charts (last 60 s) and event log, one sample per tracked frame, polled 4x a second. */
 export function LiveInsights({ jobId }: { jobId: string }) {
   const [samples, setSamples] = useState<LiveSample[]>([]);
   const [data, setData] = useState<LiveData | null>(null);
@@ -23,9 +23,9 @@ export function LiveInsights({ jobId }: { jobId: string }) {
         if (!alive) return;
         if (d.series.length) since = d.series[d.series.length - 1].t;
         setData(d);
-        if (d.series.length) setSamples((prev) => [...prev, ...d.series].slice(-600));
+        if (d.series.length) setSamples((prev) => { const cut = d.series[d.series.length - 1].t - 60; return [...prev, ...d.series].filter((x) => x.t > cut); });
       } catch { /* session not started yet or just ended */ }
-      if (alive) timer = window.setTimeout(tick, 500);
+      if (alive) timer = window.setTimeout(tick, 250);
     };
     tick();
     return () => { alive = false; window.clearTimeout(timer); };
@@ -47,7 +47,7 @@ export function LiveInsights({ jobId }: { jobId: string }) {
     <div className="grid border-t border-line @4xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-w-0 border-line p-4 @4xl:border-r">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="m-0 text-[13px] font-semibold">Live signals <span className="font-normal text-muted">· last 60 s</span></h3>
+          <h3 className="m-0 text-[13px] font-semibold">Live signals <span className="font-normal text-muted tabular">· every frame · last 60 s · frame {last?.frame ?? 0}</span></h3>
           <div role="tablist" aria-label="Live signal" className="flex gap-1 rounded-lg bg-[var(--surface-2)] p-0.5">
             {VIEWS.map((v) => (
               <button key={v.id} role="tab" aria-selected={view === v.id} onClick={() => setView(v.id)}

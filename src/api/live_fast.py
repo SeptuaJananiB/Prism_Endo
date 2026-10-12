@@ -45,7 +45,7 @@ class FastLive:
         self.out_csv = out_csv
         self._csv = None
         self._w = None
-        self.series: deque = deque(maxlen=600)          # live charts: 10 samples/s for the last 60 s
+        self.series: deque = deque(maxlen=3600)         # live charts: every frame, last 60 s at up to 60 fps
         self.events: list[dict] = []                    # live event log (warnings, risk changes, bleeding, CVS)
         self.info: dict = {}                            # latest keyframe extras (score, bleeding, CVS, reason)
         self._last_sample = 0.0
@@ -163,7 +163,7 @@ class FastLive:
         del self.events[:-200]
 
     def _sample(self, now: float, warning: str) -> None:
-        """Record one chart sample every 0.1 s and log state changes as events (called under the lock)."""
+        """Record a chart sample for EVERY frame and log state changes as events (called under the lock)."""
         t = now - self.t0
         p = self._prev
         if warning:  # one event per warning episode (the warning flickers frame to frame)
@@ -180,8 +180,6 @@ class FastLive:
             self._event(t, "CVS", "Critical View of Safety reached")
         self._prev = {"warning": warning, "risk": self.risk, "bleeding": bool(self.info.get("bleeding")),
                       "cvs": bool(self.info.get("cvs"))}
-        if now - self._last_sample < 0.1:
-            return
         self._last_sample = now
         r = lambda v: None if v is None else round(float(v), 1)
         tips = {}
@@ -189,7 +187,7 @@ class FastLive:
             d, a = s.get("dist"), s.get("approach", 0.0)
             ttc = None if d is None else (0.0 if d <= 0 else (d / a if a > self.min_approach else None))
             tips[n] = {"dist": r(d), "speed": r(s.get("speed")), "approach": r(a), "ttc": r(ttc), "target": s.get("target")}
-        self.series.append({"t": round(t, 2), "risk": self.risk, "score": self.info.get("risk_score"),
+        self.series.append({"t": round(t, 3), "frame": self.frames, "risk": self.risk, "score": self.info.get("risk_score"),
                             "warning": warning, "bleeding": bool(self.info.get("bleeding")), "tips": tips})
 
     def snapshot(self, since: float = -1.0) -> dict:

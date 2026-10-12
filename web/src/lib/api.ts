@@ -52,7 +52,7 @@ export type Job = {
 };
 
 export type LiveTip = { dist: number | null; speed: number | null; approach: number | null; ttc: number | null; target: string | null };
-export type LiveSample = { t: number; risk: string; score: number | null; warning: string; bleeding: boolean; tips: Record<string, LiveTip> };
+export type LiveSample = { t: number; frame: number; risk: string; score: number | null; warning: string; bleeding: boolean; tips: Record<string, LiveTip> };
 export type LiveData = {
   series: LiveSample[]; events: { t: number; kind: string; label: string }[]; risk: string; fps: number;
   info: { risk_score?: number | null; bleeding?: boolean; cvs?: boolean; explanation?: string; cvs_c?: (number | null)[] };
