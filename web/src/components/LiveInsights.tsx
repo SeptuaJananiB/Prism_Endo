@@ -41,18 +41,18 @@ export function LiveInsights({ jobId }: { jobId: string }) {
   const winEnd = end == null ? total : Math.min(end, total);
   const winStart = Math.max(t0, winEnd - span);
   const clampEnd = (e: number) => (e >= total - 0.25 ? null : Math.max(t0 + Math.min(span, total - t0), e));
-  // samples inside the window (every frame is kept; very wide windows are thinned to ~2000 points for drawing)
+  // samples inside the window; wide windows are grouped into ~500 points keeping the WORST value of each group
+  // (highest risk / speed, closest distance, soonest contact) so the chart stays readable and spikes are not lost
   const drawn = useMemo(() => {
     const lo = lowerBound(samples, winStart), hi = lowerBound(samples, winEnd + 1e-6);
-    const win = samples.slice(lo, hi);
-    const k = Math.ceil(win.length / 2000) || 1;
-    return k === 1 ? win : win.filter((_, i) => i % k === 0 || i === win.length - 1);
+    return worstPerBucket(samples.slice(lo, hi), 500);
   }, [samples, winStart, winEnd]);
   // wheel = zoom (5 s .. whole session), kept non-passive so the page does not scroll while zooming
   useEffect(() => {
     const el = box.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;  // plain wheel scrolls the page; Ctrl + wheel zooms the chart
       e.preventDefault();
       setSpan((sp) => Math.max(5, Math.min(Math.max(5, total - t0), sp * (e.deltaY > 0 ? 1.25 : 0.8))));
     };
@@ -89,7 +89,7 @@ export function LiveInsights({ jobId }: { jobId: string }) {
               No instrument tip detected yet — distance, speed, contact time and risk are measured from the tip.
               Bring an instrument (grasper or L-hook) into view.</div>
           : samples.length > 1
-          ? <div ref={box} className="cursor-grab touch-none select-none active:cursor-grabbing" title="Drag to pan · scroll wheel to zoom"
+          ? <div ref={box} className="cursor-grab touch-none select-none active:cursor-grabbing" title="Drag to pan · Ctrl + scroll wheel to zoom"
               onPointerDown={(e) => { drag.current = { x: e.clientX, end: winEnd }; (e.target as Element).setPointerCapture?.(e.pointerId); }}
               onPointerMove={(e) => { const d = drag.current; if (!d || !box.current) return; setEnd(clampEnd(d.end - ((e.clientX - d.x) / box.current.clientWidth) * span)); }}
               onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
@@ -223,4 +223,29 @@ function lowerBound(samples: LiveSample[], t: number): number {
   let lo = 0, hi = samples.length;
   while (lo < hi) { const m = (lo + hi) >> 1; if (samples[m].t < t) lo = m + 1; else hi = m; }
   return lo;
+}
+
+const minN = (a: number | null, b: number | null) => (a == null ? b : b == null ? a : Math.min(a, b));
+const maxN = (a: number | null, b: number | null) => (a == null ? b : b == null ? a : Math.max(a, b));
+
+/** Group samples into at most n points, keeping the worst value of each group. */
+function worstPerBucket(win: LiveSample[], n: number): LiveSample[] {
+  if (win.length <= n) return win;
+  const k = Math.ceil(win.length / n), out: LiveSample[] = [];
+  for (let i = 0; i < win.length; i += k) {
+    const g = win.slice(i, i + k);
+    const tips: Record<string, LiveSample["tips"][string]> = {};
+    let risk = g[0].risk, score: number | null = null;
+    for (const s of g) {
+      if ((RANK[s.risk] ?? 0) > (RANK[risk] ?? 0)) risk = s.risk;
+      score = maxN(score, s.score);
+      for (const [name, v] of Object.entries(s.tips)) {
+        const c = tips[name];
+        tips[name] = c ? { ...c, dist: minN(c.dist, v.dist), speed: maxN(c.speed, v.speed), ttc: minN(c.ttc, v.ttc),
+                           target: v.dist != null && (c.dist == null || v.dist < c.dist) ? v.target : c.target } : { ...v };
+      }
+    }
+    out.push({ ...g[g.length - 1], risk, score, tips, warning: g.find((s) => s.warning)?.warning ?? "" });
+  }
+  return out;
 }
