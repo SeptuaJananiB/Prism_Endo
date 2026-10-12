@@ -58,7 +58,11 @@ export function LiveInsights({ jobId }: { jobId: string }) {
             ))}
           </div>
         </div>
-        {samples.length > 1
+        {samples.length > 1 && !lines.some((l) => l.values.some((v) => v != null))
+          ? <div className="grid h-[200px] place-items-center px-6 text-center text-[13px] text-muted">
+              No instrument tip detected yet — distance, speed, contact time and risk are measured from the tip.
+              Bring an instrument (grasper or L-hook) into view.</div>
+          : samples.length > 1
           ? <LineChart key={view} t={t} lines={lines} unit={unit} height={200} colorBy={view === "risk" ? drawn.map((s) => s.risk) : undefined} />
           : <div className="grid h-[200px] place-items-center text-[13px] text-muted">Waiting for the first tracked frames…</div>}
         <div className="mt-4 grid grid-cols-1 gap-3 @xl:grid-cols-2">
