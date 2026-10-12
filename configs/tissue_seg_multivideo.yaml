@@ -1,0 +1,45 @@
+# tissue segmentation on 17 CholecSeg8k videos, VIDEO-level split (scripts/make_splits.py, seed 0).
+# Local video01/ is byte-identical to data/cholecseg8k/video01 and is used once (scripts/compare_datasets.py).
+_base_: tissue_seg.yaml
+output_dir: outputs/models/tissue_seg_multivideo
+data:
+  root:
+  - data/cholecseg8k/video01
+  - data/cholecseg8k/video09
+  - data/cholecseg8k/video12
+  - data/cholecseg8k/video17
+  - data/cholecseg8k/video18
+  - data/cholecseg8k/video20
+  - data/cholecseg8k/video24
+  - data/cholecseg8k/video25
+  - data/cholecseg8k/video26
+  - data/cholecseg8k/video27
+  - data/cholecseg8k/video28
+  - data/cholecseg8k/video35
+  - data/cholecseg8k/video37
+  - data/cholecseg8k/video43
+  - data/cholecseg8k/video48
+  - data/cholecseg8k/video52
+  - data/cholecseg8k/video55
+  group_by: video
+  splits:
+    train:
+    - video01
+    - video09
+    - video12
+    - video18
+    - video24
+    - video27
+    - video35
+    - video37
+    - video48
+    - video52
+    - video55
+    val:
+    - video20
+    - video26
+    - video43
+    test:
+    - video17
+    - video25
+    - video28

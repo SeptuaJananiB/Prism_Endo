@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PRISM-Endo Clinical Review</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1f2328;--card:#fff;--line:#d0d7de;--acc:#1565c0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1117;--fg:#e6edf3;--card:#161b22;--line:#30363d;--acc:#58a6ff}}
+:root[data-theme="dark"]{--bg:#0d1117;--fg:#e6edf3;--card:#161b22;--line:#30363d;--acc:#58a6ff}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 Segoe UI,Arial,sans-serif;margin:0;padding:16px}
+main{max-width:980px;margin:auto}h1{font-size:22px}h2{font-size:17px;margin-top:26px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:10px 0}
+label{display:block;margin:6px 0}textarea,input[type=text],input[type=date]{width:100%;box-sizing:border-box;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+.row{display:flex;gap:14px;flex-wrap:wrap}.row label{margin:2px 0}
+button{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:10px 18px;font-size:15px;cursor:pointer}
+.note{opacity:.8;font-size:13px}
+</style></head><body><main>
+<h1>PRISM-Endo — clinical review and sign-off</h1>
+<p class="note">Research prototype. Answer each item; press <b>Save</b> at the bottom to download your answers as a JSON file. Background: docs/CLINICAL_REVIEW_PACKAGE.md.</p>
+<form id="f"></form>
+<p><button type="button" id="save">Save answers (download JSON)</button></p>
+</main>
+<script>
+const items=[
+ ["sec","Risk score parameters (configs/pipeline.yaml → risk)"],
+ ["proximity_ref","Proximity: concern starts at ≈78 px (≈0.08 of the diagonal, very roughly 5–10 mm). At what distance should concern start?"],
+ ["speed_ref","Speed: which tip speeds near tissue are unsafe?"],
+ ["weights","Weights proximity 0.5 / approach 0.2 / speed 0.15 / abrupt movement 0.15 — appropriate?"],
+ ["thresholds","Category thresholds Low 0.25 / Medium 0.5 / High 0.75 and acceptable false alarms per minute"],
+ ["targets","Proximity targets (currently liver only). Which structures must be targets?"],
+ ["sec","Risk-event definitions (configs/risk_events.yaml)"],
+ ["ev_near_miss","near_miss_critical_structure — define 'dangerously close'"],
+ ["ev_contact","unintended_contact"],["ev_thermal","thermal_spread_risk"],["ev_bleeding","bleeding_onset"],
+ ["ev_traction","unsafe_traction"],["ev_severity","Severity scale"],
+ ["sec","Outputs"],
+ ["cvs","Critical View of Safety estimate (test mAP 0.539) — acceptable as a research decision aid? Display wording?"],
+ ["mm","Approximate mm from the 5 mm shaft width (±30–50 %) — show to users or keep pixels only?"],
+ ["general","Other comments / safety concerns"]];
+const f=document.getElementById('f');
+for(const [k,t] of items){
+ if(k==='sec'){const h=document.createElement('h2');h.textContent=t;f.appendChild(h);continue}
+ const c=document.createElement('div');c.className='card';
+ c.innerHTML=`<b>${t}</b><div class="row">${['accept','modify','reject'].map(v=>`<label><input type="radio" name="${k}_decision" value="${v}"> ${v}</label>`).join('')}</div><textarea name="${k}_note" rows="2" placeholder="Required change / comment"></textarea>`;
+ f.appendChild(c)}
+const s=document.createElement('div');s.className='card';
+s.innerHTML=`<h2 style="margin-top:0">Reviewer</h2><label>Name<input type="text" name="reviewer_name"></label><label>Role / speciality<input type="text" name="reviewer_role"></label><label>Date<input type="date" name="review_date"></label><label><input type="checkbox" name="confirm_definitions"> I confirm the event definitions as amended above (sets risk_events.yaml status: confirmed)</label>`;
+f.appendChild(s);
+document.getElementById('save').onclick=()=>{
+ const d={};new FormData(f).forEach((v,k)=>d[k]=v);d.saved_at=new Date().toISOString();
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:'application/json'}));
+ a.download=`clinical_review_${(d.reviewer_name||'reviewer').replace(/\W+/g,'_')}.json`;a.click()};
+</script></body></html>

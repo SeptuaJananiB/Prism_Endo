@@ -1,0 +1,135 @@
+# End-to-end PRISM-Endo pipeline configuration.
+cpu_threads: null           # torch CPU threads (null = torch default, usually #physical cores)
+device: auto                 # auto (CUDA > DirectML > CPU) | cpu | cuda | dml
+
+input:
+  fps: 25.0                  # used for image-folder inputs (CholecSeg8k is 25 fps); videos use their own fps
+  stride: 1                  # process every Nth frame
+  max_frames: null
+
+instrument:
+  # 17-video model (video-level split; grasper Dice 0.852 on 3 unseen patients vs 0.744 for the old
+  # single-video model outputs/models/instrument_seg/best.pt). L-hook is not evaluable on that test split.
+  checkpoint: outputs/models/instrument_seg_multivideo/best.pt   # missing -> instrument masks disabled
+  temporal_alpha: 0.7        # EMA of class probabilities over frames; 1.0 = off (see README: flicker results)
+
+segmentation:
+  backend: torch             # torch | onnx (CPU only; needs model.onnx from scripts/export_onnx.py)
+  upsample: bilinear         # bilinear | nearest (cheaper on CPU; measured Dice change in README)
+
+camera_motion:
+  enabled: true              # estimate global endoscope motion (LK flow + RANSAC similarity, ~5 ms/frame)
+  compensate_smoothing: false  # warp the smoothing history by camera motion (measured: no benefit on these clips)
+  compensate_speed: true     # add *_comp velocity columns (instrument motion relative to the scene)
+
+keypoints:
+  source: hybrid             # auto | dlc | mask_tip | hybrid. hybrid = DLC where plausible, else mask_tip
+  dlc_predictions: null      # path to <video>DLC_*.h5/.csv from deeplabcut.analyze_videos (null = search next to video)
+  dlc_min_confidence: 0.6    # DLC likelihood below this -> low_confidence (not used for motion/proximity)
+  mask_tip_min_confidence: 0.3
+  mask_tip_min_area: 300     # px at full frame resolution
+  # Grasper landmark = jaw HINGE (convention of the human eval labels): geodesic, 90 px back from the jaw end
+  # (src/tracking/auto_tips.py). Measured on the 40 human frames with the leakage-free model: grasper median
+  # 128 -> 32 px; L-hook keeps the straight-line far end (geodesic gave no gain). Remove to restore the old rule.
+  mask_tip_landmarks:
+    grasper: {landmark: hinge, jaw_px: 90, step: 2}
+  # Hybrid (2026-10-11): DLC v3 (trained on 86 human L-hook clicks) for the L-hook where its point is confident or
+  # on the L-hook mask, else the mask-tip estimate. On the 40 human frames: L-hook 22.4 -> 18.4 px, grasper unchanged
+  # 31.9 px. Chosen by a rule fixed in advance, but on the same 40 frames used for every comparison (small set).
+  # Without DLC predictions for a video it runs the stored model once (auto_analyze, CPU) or falls back to mask-tip.
+  hybrid:
+    dlc_slots: ["lhook_tip"]
+    accept_conf: 0.6
+    on_mask_px: 12
+    dlc_config: outputs/models/dlc_tips_v3/config.yaml
+    auto_analyze: true
+  points:
+    - {name: lhook_tip, instrument_class: l_hook, dlc_bodypart: lhook_tip}
+    # Two graspers are often visible: slots grasper_tip and grasper_tip_2 (DLC bodypart grasper_tip_2).
+    - {name: grasper_tip, instrument_class: grasper, dlc_bodypart: grasper_tip, max_instances: 2}
+
+motion:
+  smoothing: ema             # none | ema | kalman
+  ema_alpha: 0.5
+  max_gap_s: 0.25            # longer gaps reset the track (no velocity across gaps)
+  min_speed_for_direction: 20.0   # px/s; below this direction/turn angle are undefined
+  abrupt_turn_deg: 90.0
+  abrupt_accel_px_s2: 8000.0
+  trail_seconds: 2.0
+
+tissue:
+  # 17-video model: mean Dice 0.735 on 3 unseen patients vs 0.406 for outputs/models/tissue_seg/best.pt
+  checkpoint: outputs/models/tissue_seg_multivideo/best.pt       # missing -> instrument-only mode
+  # App "Surgery type" picks one of these (CLI: tissue.checkpoint=...). Both keep the same 12 classes.
+  #   other surgery: + DSAD fine-tune; DSAD test Dice 0.380 -> 0.846, appendicectomy "liver" pixels 9.9 % -> 4.6 %,
+  #   but CholecSeg8k test 0.735 -> 0.697, so it is NOT the gallbladder default (docs/WORK_LOG.md 2026-10-11).
+  by_surgery:
+    "Gallbladder (cholecystectomy)": outputs/models/tissue_seg_multivideo/best.pt
+    "Other abdominal (appendix, bowel, ...)": outputs/models/tissue_seg_dsad_colab/best.pt
+  every_n_frames: 1          # >1 reuses the last tissue mask to save compute
+  temporal_alpha: 0.7        # EMA smoothing for tissue masks; 1.0 = off
+
+proximity:
+  # Illustrative defaults - which structures matter is a clinical decision.
+  # Gallbladder is deliberately NOT a target: in cholecystectomy it is the organ being removed and the
+  # grasper holds it on purpose (with it included, every frame of clip 14859 scored "Medium").
+  # cystic_duct removed 2026-10-10: Dice 0.000 on its only held-out frames (2) and all 239 training frames
+  # come from one patient -> not reliable. Re-add only after it is validated on unseen videos.
+  target_classes: [liver]
+  # Targets the tissue model never saw in training (class_support.json: e.g. hepatic_vein, liver_ligament)
+  # are refused unless this is true. cystic_duct is trained but has NO held-out test frames -> warned.
+  allow_untrained_targets: false
+  min_area: 50
+
+  # APPROXIMATE mm (no calibration): scale from the 5 mm instrument shaft width near the tip (src/proximity/scale.py).
+  # Expect roughly +-30-50 % error; pixels remain the primary unit. Columns *_mm_approx.
+  approx_mm:
+    enabled: true
+    shaft_mm: 5.0
+
+risk:
+  enabled: true
+  mode: rule_based           # rule_based | learned (learned requires a trained model, see train_risk_model.py)
+  learned_model: null
+  when_proximity_unavailable: motion_only   # motion_only | disable
+  proximity_ref_frac: 0.08   # distance (fraction of image diagonal, ~78 px at 854x480) where f_prox reaches 0
+  gate_mult: 2.0
+  speed_ref_frac_per_s: 0.6  # speed (diagonals/s) at which f_speed saturates
+  approach_ref_frac_per_s: 0.3
+  accel_ref_frac_per_s2: 12.0
+  weights: {proximity: 0.5, approach: 0.2, speed: 0.15, abrupt: 0.15}
+  smoothing_alpha: 0.4
+  thresholds: {low: 0.25, medium: 0.5, high: 0.75}
+  dwell_s: 0.2
+  rapid_rise_per_s: 2.0
+  reset_after_missing_s: 1.0
+  explain_min_contribution: 0.05
+  use_camera_compensated_speed: false   # true: speed term uses motion relative to the scene (not validated)
+
+safety:
+  # Bleeding detector: U-Net ResNet-18 on SurgBlood (split by clip); held-out detection F1 0.937, AUROC 0.942.
+  # Columns bleeding_frac / bleeding_detected; thin dark-red outline in the overlay. Not clinically validated.
+  bleeding:
+    enabled: true
+    checkpoint: outputs/models/bleeding_unet/best.pt
+    every_s: 0.5
+    min_frac: 0.002
+    use_gpu: true
+  # Critical View of Safety (Endoscapes surgeon labels; ResNet-50 trained on a Colab T4): test mAP 0.539 on 40 unseen
+  # videos. "Safe to clip?" estimate per criterion C1/C2/C3, scored every_s seconds (CPU). Not tissue-injury risk,
+  # not clinically validated. Columns cvs_c1..c3, cvs_achieved in results.csv.
+  cvs:
+    enabled: true
+    checkpoint: outputs/models/cvs_resnet50/v2/best.pt
+    every_s: 1.0
+    height: 320
+    width: 576
+    threshold: 0.5
+
+output:
+  dir: outputs/runs
+  write_video: true
+  browser_playable: true     # also write an H.264 copy via ffmpeg for the UI
+  write_original_video: true # H.264 copy of the input for side-by-side viewing in the UI
+  show_all_tissue: false     # overlay every tissue class (default: only proximity targets)
+  mask_alpha: 0.4

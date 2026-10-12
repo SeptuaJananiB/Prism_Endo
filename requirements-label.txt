@@ -1,0 +1,4 @@
+# Optional napari labelling GUI (alternative to src/ui/label_tips.py). Use a SEPARATE venv (.venv-label):
+#   py -3.11 -m venv .venv-label && .venv-label\Scripts\python -m pip install -r requirements-label.txt
+napari[pyqt5]==0.9.2
+napari-deeplabcut==0.4.0

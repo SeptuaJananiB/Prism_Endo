@@ -1,0 +1,5 @@
+# GPU training/inference on AMD (e.g. Radeon RX 6800M) or Intel GPUs under Windows via DirectML.
+# torch-directml pins its own torch (2.4.1), so use a SEPARATE venv (.venv-dml), then:
+#   pip install -r requirements-directml.txt
+#   pip install -r requirements.txt --no-deps   (or rely on --system-site-packages)
+torch-directml==0.2.5.dev240914

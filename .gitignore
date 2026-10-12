@@ -1,0 +1,44 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.venv-dml/
+outputs/
+Videos/
+models/
+Dataset_Utilities/
+files_dataset/
+Synthethgic Videa_dataset/
+.env
+.idea/
+.vscode/
+video01/
+data/
+# credentials - never commit
+.kaggle/
+kaggle.json
+access_token
+*.token
+.env.*
+tools/
+.venv-label/
+# never publish: weights, videos, datasets, archives (size + dataset licences + patient video)
+*.pt
+*.pth
+*.onnx
+*.h5
+*.pickle
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.zip
+*.parquet
+*.tar
+*.gz
+web/node_modules/
+web/dist/
+web/e2e-results/
+web/e2e-report/
+web/e2e-shots/
+!.env.example

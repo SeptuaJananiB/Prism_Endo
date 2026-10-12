@@ -1,0 +1,10 @@
+# Stage A: instrument segmentation (per instrument type).
+_base_: seg_base.yaml
+task: instrument_segmentation
+output_dir: outputs/models/instrument_seg
+
+# Class index = position in this list. `values` are raw CholecSeg8k label ids.
+classes:
+  - {name: background, values: []}
+  - {name: grasper, values: [31]}
+  - {name: l_hook, values: [32]}       # L-hook electrocautery

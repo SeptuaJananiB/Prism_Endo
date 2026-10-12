@@ -1,0 +1,9 @@
+# CPU-speed preset (measured trade-offs in README "CPU performance").
+_base_: pipeline.yaml
+device: cpu
+cpu_threads: 16              # all logical cores of the test CPU; set to your core count
+segmentation:
+  backend: onnx              # identical labels, 1.8-2.0x faster forward on the test CPU
+  upsample: nearest          # test Dice: instrument 0.882 -> 0.878, tissue 0.759 -> 0.758
+tissue:
+  every_n_frames: 2          # tissue mask reused for one frame (40 ms at 25 fps); accuracy impact not measured

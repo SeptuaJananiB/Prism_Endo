@@ -1,0 +1,5 @@
+# DeepLabCut keypoint tracking (PyTorch engine). Tested: deeplabcut 3.0.2 + torch 2.9 (CPU), Python 3.11.
+# Keep it in its own venv (.venv): it pins filelock/packaging versions and pulls in tables, statsmodels, etc.
+deeplabcut==3.0.2
+# For the labelling GUI (napari-based) additionally:
+#   pip install "deeplabcut[gui]==3.0.2"

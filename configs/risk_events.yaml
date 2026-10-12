@@ -1,0 +1,162 @@
+# Risk / near-miss EVENT annotation schema for PRISM-Endo (machine-readable).
+#
+# STATUS: PROPOSAL. The event types, definitions, severity and confidence scales
+# below are engineering proposals written to make annotation possible. They are
+# NOT clinical facts and have NOT been reviewed by a surgeon. The supervising
+# surgeon must confirm or rewrite every definition (and set `status: confirmed`)
+# before annotation starts. Human-readable guide: docs/RISK_ANNOTATION.md.
+#
+# Used by: src/risk/labels.py (validator, agreement), scripts/validate_risk_labels.py,
+#          scripts/train_risk_model.py (training gate), src/ui/annotate_events.py (tool).
+
+version: 1
+status: proposal            # proposal | confirmed (set by the supervising surgeon)
+
+columns:
+  # Backward compatible with src/risk/learned.attach_labels (interval form).
+  required: [video_id, start_s, end_s, label]
+  optional: [event_type, severity, annotator, confidence, notes, blind, created_at]
+  # video_id   : must equal the pipeline's `video_id` (input file stem / frame-folder name)
+  # start_s    : event start, seconds from the start of the video (pipeline `timestamp_s`)
+  # end_s      : event end, seconds, inclusive (start_s < end_s)
+  # label      : 1 = risk event, 0 = coverage marker (see `coverage_marker`)
+  # event_type : one of `event_types` below (or the coverage marker)
+  # severity   : key of `severity` below (integer)
+  # annotator  : stable pseudonymous ID, e.g. "surgeonA" (one file per annotator)
+  # confidence : key of `confidence` below (integer)
+  # notes      : free text (required for event_type `other`)
+  # blind      : true if the annotator did NOT see the PRISM overlay/score for this video
+  # created_at : ISO-8601 time the row was written (audit)
+
+label_values: [0, 1]
+
+# Annotators mark the WHOLE video. Everything inside an annotated video that is not
+# inside a label-1 interval is NEGATIVE. This marker row (label 0, start 0, end = video
+# duration) records that an annotator reviewed the complete video; it is the only way
+# to record a reviewed video with zero events.
+coverage_marker: review_complete
+
+severity:          # PROPOSED ordinal scale
+  1: "minor - self-corrected, no change of plan needed"
+  2: "moderate - required a corrective action (withdraw, re-grasp, stop energy)"
+  3: "major - would very likely have caused injury had it continued"
+
+confidence:        # annotator's confidence that the event meets the definition
+  1: "uncertain"
+  2: "probable"
+  3: "certain"
+
+event_types:
+  near_miss_critical_structure:
+    label: 1
+    title: "Near-miss to a critical structure"
+    definition: >-
+      An instrument tip or jaw comes dangerously close to a critical structure
+      (e.g. cystic duct, cystic artery, common bile duct, bowel, major vessel)
+      WITHOUT contact or injury. "Dangerously close" must be operationalised by the
+      surgeon (e.g. an estimated distance, or "closer than the surgeon would
+      accept at that phase of the operation").
+    include:
+      - "approach towards a critical structure that the surgeon judges unsafe at that moment"
+      - "the event is visible in the image (the structure and the instrument are both in view)"
+    exclude:
+      - "deliberate, controlled dissection of the structure as part of the planned step"
+      - "proximity caused only by camera motion or zoom"
+      - "actual contact (use unintended_contact)"
+    start: "first frame at which the approach becomes unsafe in the annotator's judgement"
+    end: "last frame before the instrument is back at a safe distance"
+
+  unintended_contact:
+    label: 1
+    title: "Unintended tissue contact"
+    definition: >-
+      An instrument touches, grasps, pushes or perforates tissue that was not the
+      intended target of the current action, regardless of visible injury.
+    include:
+      - "visible deformation, blanching or displacement of non-target tissue by an instrument"
+    exclude:
+      - "planned retraction or exposure of non-target tissue"
+      - "contact that is only apparent because of occlusion / 2-D projection"
+    start: "first frame of contact"
+    end: "last frame of contact"
+
+  thermal_spread_risk:
+    label: 1
+    title: "Energy near non-target tissue"
+    definition: >-
+      An energy device (e.g. L-hook diathermy) is active, or is about to be activated,
+      while its tip is in contact with or very close to non-target tissue or a
+      critical structure.
+    include:
+      - "visible activation signs (smoke, charring, sparking) near non-target tissue"
+      - "activation within the margin the surgeon defines as unsafe"
+    exclude:
+      - "activation on the intended target with adequate margin"
+      - "cases where activation cannot be inferred from video (state this in notes)"
+    start: "first frame the energy device is active (or positioned for activation) in the unsafe zone"
+    end: "last frame of activation or of the unsafe position, whichever is later"
+
+  bleeding_onset:
+    label: 1
+    title: "Onset of bleeding"
+    definition: >-
+      New, visible bleeding starts (not pre-existing ooze), whether or not an
+      instrument cause is visible.
+    include:
+      - "new blood appearing from a point source or tissue edge"
+    exclude:
+      - "blood already present at the start of the clip"
+      - "irrigation fluid or bile"
+    start: "first frame new blood is visible"
+    end: "frame at which bleeding is controlled or the clip ends (mark the onset period; see guide)"
+
+  unsafe_traction:
+    label: 1
+    title: "Unsafe traction"
+    definition: >-
+      A grasper applies traction that the surgeon judges excessive or in an unsafe
+      direction (e.g. risk of tearing, avulsion, or distorting anatomy so that
+      structures are misidentified).
+    include:
+      - "visible over-stretching, tearing, or tenting of tissue beyond what the step requires"
+    exclude:
+      - "standard fundus / infundibulum retraction within accepted limits"
+    start: "first frame the traction becomes unsafe"
+    end: "last frame before traction is released or corrected"
+
+  other:
+    label: 1
+    title: "Other risk event (describe in notes)"
+    definition: >-
+      A risk or near-miss event that does not fit the categories above. `notes` must
+      describe it. Recurring `other` events should become a new type after review.
+    include: ["anything the annotator considers a reportable risk event"]
+    exclude: ["events covered by another type"]
+    start: "first frame of the event"
+    end: "last frame of the event"
+    requires_notes: true
+
+  review_complete:
+    label: 0
+    title: "Video reviewed completely (coverage marker)"
+    definition: >-
+      Not an event. Marks that this annotator reviewed the whole video [start_s, end_s]
+      and annotated every event in it. Add exactly one per (video, annotator) after
+      finishing the video, including videos with no events.
+    start: "0 (start of the video)"
+    end: "video duration (last frame time)"
+
+agreement:
+  # Protocol targets (proposed; confirm with the study team).
+  double_annotated_fraction: 0.2   # >= 20 % of videos labelled independently by >= 2 annotators
+  min_annotators_on_subset: 2
+  frame_kappa_target: 0.6          # frame-level Cohen's kappa ("substantial", Landis & Koch)
+  event_f1_target: 0.7             # event-level agreement (intervals overlap = matched)
+  grid_fps: 25.0                   # time grid for frame-level kappa when the video fps is unknown
+
+validation:
+  duration_tolerance_s: 0.1        # allowed overshoot of end_s beyond the last frame time
+  coverage_tolerance_s: 0.1        # review_complete must span [0, duration] within this
+
+training:
+  min_events: 10                   # refuse to train below this many positive events (a floor, not a power calculation)

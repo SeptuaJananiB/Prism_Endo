@@ -1,0 +1,53 @@
+# Shared settings for instrument and tissue segmentation (CholecSeg8k layout).
+seed: 0
+device: auto            # auto | cpu | cuda
+
+data:
+  root: video01         # folder containing the CholecSeg8k clip folders (or a list of folders, see docs/DATASETS.md)
+  layout: cholecseg8k   # cholecseg8k | indexed_png
+  # Split unit: clip (one 80-frame clip folder, used for all current results) |
+  # video (one Cholec80 video = one procedure; patient-level proxy, needs >= 3 videos;
+  # see configs/seg_multivideo_example.yaml and scripts/make_splits.py).
+  group_by: clip
+  label_suffix: _endo_watershed_mask.png   # dense label map (NOT *_endo_mask.png, which is sparse)
+  ignore_values: [255, 0]   # 255 = watershed boundary lines, 0 = unlabelled
+  unlisted: background
+  # Split by clip (temporal block), never by random frame, to avoid leakage.
+  # All 16 clips come from ONE patient video (Cholec80 video01), so these
+  # numbers measure generalisation across time within one patient only.
+  splits:
+    test: [video01_14859, video01_14939, video01_15019, video01_15099]
+    val: [video01_00400]
+    train: rest
+
+input_size: [256, 448]  # H, W (multiples of 32); frames are 480x854
+
+model:
+  arch: unet
+  encoder: resnet18
+  pretrained: true      # ImageNet encoder weights (~45 MB, downloaded once)
+  encoder_weights: imagenet
+
+augment:
+  hflip_p: 0.5
+  vflip_p: 0.0
+  rotate_deg: 10
+  scale_range: [0.9, 1.1]
+  brightness: [0.8, 1.2]
+  contrast: [0.8, 1.2]
+  specular_p: 0.2
+
+train:
+  epochs: 8
+  batch_size: 4         # 8 crashed (access violation) on a 16 GB machine with ~4 GB free commit
+  lr: 0.0003
+  weight_decay: 0.0001
+  num_workers: 0        # >0 needs `if __name__ == "__main__"` on Windows (entry points have it)
+  num_threads: 8        # torch CPU threads; null = torch default
+  cache: false          # true keeps resized frames in RAM (~400 MB) - faster, more memory
+  dice_weight: 1.0
+  grad_accum_steps: 1   # effective batch = batch_size * grad_accum_steps
+  max_train_batches: null   # set e.g. 2 for a smoke test
+  limit_train_samples: null
+  limit_val_samples: null
+  limit_test_samples: null

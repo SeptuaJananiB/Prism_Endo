@@ -1,0 +1,20 @@
+# Stage D: tissue / anatomy segmentation (CholecSeg8k classes).
+# Instruments are kept as one "instrument" class so the model learns about
+# occlusion; the tissue module ignores that class downstream.
+_base_: seg_base.yaml
+task: tissue_segmentation
+output_dir: outputs/models/tissue_seg
+
+classes:
+  - {name: background, values: [50]}          # black field-of-view border
+  - {name: abdominal_wall, values: [11]}
+  - {name: liver, values: [21]}
+  - {name: gastrointestinal_tract, values: [13]}
+  - {name: fat, values: [12]}
+  - {name: instrument, values: [31, 32]}
+  - {name: connective_tissue, values: [23]}
+  - {name: blood, values: [24]}
+  - {name: cystic_duct, values: [25]}          # only in clips 16345-16585 (train split)
+  - {name: gallbladder, values: [22]}
+  - {name: hepatic_vein, values: [33]}         # absent from video01 -> cannot be learned/evaluated here
+  - {name: liver_ligament, values: [5]}        # absent from video01 -> cannot be learned/evaluated here
