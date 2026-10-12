@@ -4,7 +4,7 @@ import { LineChart, RISK_VAR } from "./Charts";
 
 type View = "distance" | "speed" | "ttc" | "risk";
 const VIEWS: { id: View; label: string }[] = [
-  { id: "distance", label: "Distance" }, { id: "speed", label: "Tip speed" }, { id: "ttc", label: "Time to contact" }, { id: "risk", label: "Risk" }];
+  { id: "risk", label: "Risk" }, { id: "distance", label: "Distance" }, { id: "speed", label: "Tip speed" }, { id: "ttc", label: "Time to contact" }];
 const tipName = (n: string) => n.replace(/(lhook|grasper)_tip(_2)?/g, (_m, k, two) => `${k === "lhook" ? "L-hook" : "Grasper"} tip${two ? " 2" : ""}`);
 const nice = (s?: string | null) => (s ?? "").replace(/_/g, " ");
 const fmt = (v: number | null | undefined, d = 0) => (v == null ? "–" : v.toFixed(d));
@@ -13,7 +13,7 @@ const fmt = (v: number | null | undefined, d = 0) => (v == null ? "–" : v.toFi
 export function LiveInsights({ jobId }: { jobId: string }) {
   const [samples, setSamples] = useState<LiveSample[]>([]);
   const [data, setData] = useState<LiveData | null>(null);
-  const [view, setView] = useState<View>("distance");
+  const [view, setView] = useState<View>("risk");
 
   useEffect(() => {
     let alive = true, since = 0, timer = 0;
