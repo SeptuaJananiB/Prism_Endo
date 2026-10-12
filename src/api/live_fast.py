@@ -14,6 +14,7 @@ from __future__ import annotations
 import csv
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import cv2
@@ -44,6 +45,13 @@ class FastLive:
         self.out_csv = out_csv
         self._csv = None
         self._w = None
+        self.series: deque = deque(maxlen=600)          # live charts: 10 samples/s for the last 60 s
+        self.events: list[dict] = []                    # live event log (warnings, risk changes, bleeding, CVS)
+        self.info: dict = {}                            # latest keyframe extras (score, bleeding, CVS, reason)
+        self._last_sample = 0.0
+        self._warn_t: float | None = None
+        self._risk_t: dict[str, float] = {}
+        self._prev = {"warning": "", "risk": None, "bleeding": False, "cvs": False}
         self.lock = threading.Lock()  # keyframes come from the analysis thread, frames from the capture thread
 
     # -- keyframe from the full pipeline ---------------------------------------------------------------------------
@@ -84,6 +92,10 @@ class FastLive:
             self.tips = tips
             self.prev_gray = gray
             self.risk = row.get("risk_category") or "Unavailable"
+            num = lambda v: None if v is None or v != v else float(v)
+            self.info = {"risk_score": num(row.get("risk_score")), "bleeding": bool(row.get("bleeding_detected")),
+                         "cvs": bool(row.get("cvs_achieved")), "explanation": row.get("risk_explanation") or "",
+                         "cvs_c": [num(row.get(f"cvs_c{i}")) for i in (1, 2, 3)]}
 
     # -- every camera frame ----------------------------------------------------------------------------------------
     def frame(self, img: np.ndarray) -> dict:
@@ -143,7 +155,48 @@ class FastLive:
         self.latest = (img, {n: p.copy() for n, p in self.tips.items()}, warning, self.frames)
         info = {"fps": round(self.fps, 1), "warning": warning, "tips": len(self.tips)}
         self._log(now, best, warning)
+        self._sample(now, warning)
         return info
+
+    def _event(self, t: float, kind: str, label: str) -> None:
+        self.events.append({"t": round(t, 2), "kind": kind, "label": label})
+        del self.events[:-200]
+
+    def _sample(self, now: float, warning: str) -> None:
+        """Record one chart sample every 0.1 s and log state changes as events (called under the lock)."""
+        t = now - self.t0
+        p = self._prev
+        if warning:  # one event per warning episode (the warning flickers frame to frame)
+            if self._warn_t is None or t - self._warn_t > 2.0:
+                self._event(t, "Contact warning", warning)
+            self._warn_t = t
+        if self.risk != p["risk"] and self.risk in ("Medium", "High"):  # rises only, once per 3 s per level
+            if t - self._risk_t.get(self.risk, -9.0) > 3.0:
+                self._event(t, "Risk", f"Risk rose to {self.risk}")
+            self._risk_t[self.risk] = t
+        if self.info.get("bleeding") and not p["bleeding"]:
+            self._event(t, "Bleeding", "Bleeding flagged")
+        if self.info.get("cvs") and not p["cvs"]:
+            self._event(t, "CVS", "Critical View of Safety reached")
+        self._prev = {"warning": warning, "risk": self.risk, "bleeding": bool(self.info.get("bleeding")),
+                      "cvs": bool(self.info.get("cvs"))}
+        if now - self._last_sample < 0.1:
+            return
+        self._last_sample = now
+        r = lambda v: None if v is None else round(float(v), 1)
+        tips = {}
+        for n, s in self.state.items():
+            d, a = s.get("dist"), s.get("approach", 0.0)
+            ttc = None if d is None else (0.0 if d <= 0 else (d / a if a > self.min_approach else None))
+            tips[n] = {"dist": r(d), "speed": r(s.get("speed")), "approach": r(a), "ttc": r(ttc), "target": s.get("target")}
+        self.series.append({"t": round(t, 2), "risk": self.risk, "score": self.info.get("risk_score"),
+                            "warning": warning, "bleeding": bool(self.info.get("bleeding")), "tips": tips})
+
+    def snapshot(self, since: float = -1.0) -> dict:
+        """Live charts / events / readouts for the browser."""
+        with self.lock:
+            return {"series": [x for x in self.series if x["t"] > since], "events": list(self.events),
+                    "info": dict(self.info), "risk": self.risk, "fps": round(self.fps, 1)}
 
     def render(self):
         """Draw the newest tracked frame (called from the display thread, not the capture thread)."""

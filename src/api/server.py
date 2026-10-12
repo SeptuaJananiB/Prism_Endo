@@ -477,6 +477,15 @@ def live_stream(job_id: str):
                              headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/api/live/{job_id}/data")
+def live_data(job_id: str, since: float = -1.0):
+    """Live charts, event log and readouts for a running live session (rolling last 60 s)."""
+    fast = FAST.get(job_id)
+    if fast is None:
+        raise HTTPException(404, "no live session")
+    return fast.snapshot(since)
+
+
 @app.get("/api/jobs/{job_id}")
 def job(job_id: str):
     if job_id not in JOBS:

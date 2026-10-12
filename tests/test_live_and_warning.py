@@ -28,7 +28,7 @@ def test_fast_live_tracks_tip_and_warns_on_approach():
     tissue[:, 250:] = 1                                   # target tissue on the right
     raw = np.random.default_rng(0).integers(0, 255, (h, w, 3), dtype=np.uint8)
     fl = FastLive(warn_s=1.0, min_approach_px_s=5.0)
-    fl.keyframe(raw, {"grasper_tip_x": 100.0, "grasper_tip_y": 120.0, "grasper_tip_kp_status": "ok", "risk_category": "Low"},
+    fl.keyframe(raw, {"grasper_tip_x": 100.0, "grasper_tip_y": 120.0, "grasper_tip_kp_status": "ok", "risk_category": "High"},
                 None, tissue, ["background", "liver"], ["liver"], ["grasper_tip"])
     info = {}
     for k in range(1, 12):                               # texture moves right 12 px per frame (tip approaching)
@@ -40,3 +40,8 @@ def test_fast_live_tracks_tip_and_warns_on_approach():
     assert tip[0] > 200                                   # optical flow followed the motion
     out, n = fl.render()
     assert out is not None and out.shape == raw.shape
+    snap = fl.snapshot()                                  # live charts / readouts / events for the browser
+    assert snap["series"] and "grasper_tip" in snap["series"][-1]["tips"]
+    assert snap["series"][-1]["tips"]["grasper_tip"]["target"] == "liver"
+    assert any(e["kind"] == "Risk" for e in snap["events"])
+    assert fl.snapshot(since=snap["series"][-1]["t"])["series"] == []

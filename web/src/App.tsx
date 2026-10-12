@@ -11,6 +11,7 @@ import { Compare } from "./components/Compare";
 import { Landing, Splash } from "./components/Landing";
 import { AiExplain } from "./components/AiExplain";
 import { SidePanel } from "./components/SidePanel";
+import { LiveInsights } from "./components/LiveInsights";
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const label = (c: string) => c.replace(/_(prox_distance_px|speed_px_s)$/, "").replace(/_/g, " ");
@@ -313,6 +314,7 @@ export default function App() {
                   ? <img src={api.liveUrl(liveJob.id)} alt="Live annotated camera view" className="h-full w-full object-contain" />
                   : <span className="text-[13px] text-white/70">{liveJob.phase ?? "Starting camera…"}</span>}
               </div>
+              {liveJob.status === "running" && <div className="@container"><LiveInsights jobId={liveJob.id} /></div>}
             </section>
           )}
           {runs && runs.length === 0 && <EmptyState onFocusForm={() => { setMenu(true); setTimeout(() => side.current?.focusForm(), 320); }} />}

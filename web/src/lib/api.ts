@@ -51,6 +51,13 @@ export type Job = {
   error?: string;
 };
 
+export type LiveTip = { dist: number | null; speed: number | null; approach: number | null; ttc: number | null; target: string | null };
+export type LiveSample = { t: number; risk: string; score: number | null; warning: string; bleeding: boolean; tips: Record<string, LiveTip> };
+export type LiveData = {
+  series: LiveSample[]; events: { t: number; kind: string; label: string }[]; risk: string; fps: number;
+  info: { risk_score?: number | null; bleeding?: boolean; cvs?: boolean; explanation?: string; cvs_c?: (number | null)[] };
+};
+
 async function j<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, init);
   if (!r.ok) {
@@ -81,6 +88,7 @@ export const api = {
   finish: (id: string) => j<Job>(`/api/jobs/${id}/finish`, { method: "POST" }),
   cameras: () => j<{ cameras: number[] }>("/api/cameras"),
   liveUrl: (id: string) => `/api/live/${id}.mjpg`,
+  liveData: (id: string, since = -1) => j<LiveData>(`/api/live/${id}/data?since=${since}`),
   cancel: (id: string) => j<Job>(`/api/jobs/${id}/cancel`, { method: "POST" }),
   flags: (name: string) => j<{ t: number; frame: number; kind: "agree" | "wrong" | "important"; note: string }[]>(`/api/runs/${encodeURIComponent(name)}/flags`),
   saveFlags: (name: string, flags: object[]) =>
