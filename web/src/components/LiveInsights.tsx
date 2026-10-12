@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type LiveData, type LiveSample } from "../lib/api";
 import { LineChart, RISK_VAR } from "./Charts";
 
@@ -9,11 +9,16 @@ const tipName = (n: string) => n.replace(/(lhook|grasper)_tip(_2)?/g, (_m, k, tw
 const nice = (s?: string | null) => (s ?? "").replace(/_/g, " ");
 const fmt = (v: number | null | undefined, d = 0) => (v == null ? "–" : v.toFixed(d));
 
-/** Live session: per-tip readouts, charts of the whole session, per-second table and event log, one sample per tracked frame, polled 4x a second. */
+/** Live session: per-tip readouts, charts of the last 60 s (scroll, zoom and pan back through the whole session), per-second table and event log, one sample per tracked frame, polled 4x a second. */
 export function LiveInsights({ jobId }: { jobId: string }) {
   const [samples, setSamples] = useState<LiveSample[]>([]);
   const [data, setData] = useState<LiveData | null>(null);
   const [view, setView] = useState<View>("risk");
+  // chart window: last `span` seconds; `end` null = follow live, a number = scrolled back to that time
+  const [span, setSpan] = useState(60);
+  const [end, setEnd] = useState<number | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; end: number } | null>(null);
 
   useEffect(() => {
     let alive = true, since = 0, timer = 0;
@@ -31,8 +36,29 @@ export function LiveInsights({ jobId }: { jobId: string }) {
     return () => { alive = false; window.clearTimeout(timer); };
   }, [jobId]);
 
-  // charts draw at most ~2000 points (every frame is kept; long sessions are thinned only for drawing)
-  const drawn = useMemo(() => { const k = Math.ceil(samples.length / 2000) || 1; return k === 1 ? samples : samples.filter((_, i) => i % k === 0 || i === samples.length - 1); }, [samples]);
+  const total = samples.length ? samples[samples.length - 1].t : 0;
+  const t0 = samples.length ? samples[0].t : 0;
+  const winEnd = end == null ? total : Math.min(end, total);
+  const winStart = Math.max(t0, winEnd - span);
+  const clampEnd = (e: number) => (e >= total - 0.25 ? null : Math.max(t0 + Math.min(span, total - t0), e));
+  // samples inside the window (every frame is kept; very wide windows are thinned to ~2000 points for drawing)
+  const drawn = useMemo(() => {
+    const lo = lowerBound(samples, winStart), hi = lowerBound(samples, winEnd + 1e-6);
+    const win = samples.slice(lo, hi);
+    const k = Math.ceil(win.length / 2000) || 1;
+    return k === 1 ? win : win.filter((_, i) => i % k === 0 || i === win.length - 1);
+  }, [samples, winStart, winEnd]);
+  // wheel = zoom (5 s .. whole session), kept non-passive so the page does not scroll while zooming
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setSpan((sp) => Math.max(5, Math.min(Math.max(5, total - t0), sp * (e.deltaY > 0 ? 1.25 : 0.8))));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [total, t0]);
   const t = useMemo(() => drawn.map((s) => s.t), [drawn]);
   const names = useMemo(() => Array.from(new Set(samples.flatMap((s) => Object.keys(s.tips)))), [samples]);
   const lines = useMemo(() => {
@@ -50,7 +76,7 @@ export function LiveInsights({ jobId }: { jobId: string }) {
     <div className="grid border-t border-line @4xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-w-0 border-line p-4 @4xl:border-r">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="m-0 text-[13px] font-semibold">Live signals <span className="font-normal text-muted tabular">· every frame · whole session · {(last?.t ?? 0).toFixed(1)} s · frame {last?.frame ?? 0}</span></h3>
+          <h3 className="m-0 text-[13px] font-semibold">Live signals <span className="font-normal text-muted tabular">· every frame · {end == null ? `last ${span < 60 ? span.toFixed(0) + " s" : (span / 60).toFixed(1) + " min"}` : "scrolled back"} · {(last?.t ?? 0).toFixed(1)} s · frame {last?.frame ?? 0}</span></h3>
           <div role="tablist" aria-label="Live signal" className="flex gap-1 rounded-lg bg-[var(--surface-2)] p-0.5">
             {VIEWS.map((v) => (
               <button key={v.id} role="tab" aria-selected={view === v.id} onClick={() => setView(v.id)}
@@ -63,8 +89,29 @@ export function LiveInsights({ jobId }: { jobId: string }) {
               No instrument tip detected yet — distance, speed, contact time and risk are measured from the tip.
               Bring an instrument (grasper or L-hook) into view.</div>
           : samples.length > 1
-          ? <LineChart key={view} t={t} lines={lines} unit={unit} height={200} colorBy={view === "risk" ? drawn.map((s) => s.risk) : undefined} />
+          ? <div ref={box} className="cursor-grab touch-none select-none active:cursor-grabbing" title="Drag to pan · scroll wheel to zoom"
+              onPointerDown={(e) => { drag.current = { x: e.clientX, end: winEnd }; (e.target as Element).setPointerCapture?.(e.pointerId); }}
+              onPointerMove={(e) => { const d = drag.current; if (!d || !box.current) return; setEnd(clampEnd(d.end - ((e.clientX - d.x) / box.current.clientWidth) * span)); }}
+              onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
+              {drawn.length > 1
+                ? <LineChart key={view} t={t} lines={lines} unit={unit} height={200} colorBy={view === "risk" ? drawn.map((s) => s.risk) : undefined} />
+                : <div className="grid h-[200px] place-items-center text-[13px] text-muted">No frames in this window.</div>}
+            </div>
           : <div className="grid h-[200px] place-items-center text-[13px] text-muted">Waiting for the first tracked frames…</div>}
+        {samples.length > 1 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <button className="btn h-7 w-7 p-0" onClick={() => setSpan((sp) => Math.max(5, sp * 0.5))} aria-label="Zoom in" title="Zoom in">+</button>
+            <button className="btn h-7 w-7 p-0" onClick={() => setSpan((sp) => Math.min(Math.max(5, total - t0), sp * 2))} aria-label="Zoom out" title="Zoom out">−</button>
+            <span className="w-24 text-muted tabular">window {span < 60 ? `${span.toFixed(0)} s` : `${(span / 60).toFixed(1)} min`}</span>
+            <label htmlFor="live-scroll" className="sr-only">Scroll through the session</label>
+            <input id="live-scroll" type="range" className="min-w-[120px] flex-1" min={t0 + Math.min(span, total - t0)} max={total} step={0.1} value={winEnd}
+              disabled={total - t0 <= span} onChange={(e) => setEnd(clampEnd(Number(e.target.value)))}
+              aria-valuetext={`${winStart.toFixed(0)} to ${winEnd.toFixed(0)} seconds`} />
+            <span className="text-muted tabular">{winStart.toFixed(0)}–{winEnd.toFixed(0)} s</span>
+            <button className={`btn h-7 px-2.5 ${end == null ? "border-err text-err" : ""}`} onClick={() => { setEnd(null); setSpan(60); }}
+              aria-pressed={end == null} aria-label="Follow live (last 60 s)" title="Follow the live feed (last 60 s)">● Live</button>
+          </div>
+        )}
         <div className="mt-4 grid grid-cols-1 gap-3 @xl:grid-cols-2">
           {names.length === 0 && <p className="m-0 text-[13px] text-muted">No instrument tip in view.</p>}
           {names.map((n) => {
@@ -169,4 +216,11 @@ function bridge(samples: LiveSample[], values: (number | null)[]): (number | nul
     if (v != null) { last = v; lastT = samples[i].t; return v; }
     return last != null && samples[i].t - lastT < 0.5 ? last : null;
   });
+}
+
+/** First index whose time is >= t (samples are in time order). */
+function lowerBound(samples: LiveSample[], t: number): number {
+  let lo = 0, hi = samples.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (samples[m].t < t) lo = m + 1; else hi = m; }
+  return lo;
 }
