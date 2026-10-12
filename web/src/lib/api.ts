@@ -88,7 +88,7 @@ export const api = {
   finish: (id: string) => j<Job>(`/api/jobs/${id}/finish`, { method: "POST" }),
   cameras: () => j<{ cameras: number[] }>("/api/cameras"),
   liveUrl: (id: string) => `/api/live/${id}.mjpg`,
-  liveData: (id: string, since = -1) => j<LiveData>(`/api/live/${id}/data?since=${since}`),
+  liveData: (id: string, since = 0) => j<LiveData>(`/api/live/${id}/data?since=${since}`),
   cancel: (id: string) => j<Job>(`/api/jobs/${id}/cancel`, { method: "POST" }),
   flags: (name: string) => j<{ t: number; frame: number; kind: "agree" | "wrong" | "important"; note: string }[]>(`/api/runs/${encodeURIComponent(name)}/flags`),
   saveFlags: (name: string, flags: object[]) =>

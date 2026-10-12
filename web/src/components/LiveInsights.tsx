@@ -9,21 +9,21 @@ const tipName = (n: string) => n.replace(/(lhook|grasper)_tip(_2)?/g, (_m, k, tw
 const nice = (s?: string | null) => (s ?? "").replace(/_/g, " ");
 const fmt = (v: number | null | undefined, d = 0) => (v == null ? "–" : v.toFixed(d));
 
-/** Live session: per-tip readouts, rolling charts (last 60 s) and event log, one sample per tracked frame, polled 4x a second. */
+/** Live session: per-tip readouts, charts of the whole session, per-second table and event log, one sample per tracked frame, polled 4x a second. */
 export function LiveInsights({ jobId }: { jobId: string }) {
   const [samples, setSamples] = useState<LiveSample[]>([]);
   const [data, setData] = useState<LiveData | null>(null);
   const [view, setView] = useState<View>("distance");
 
   useEffect(() => {
-    let alive = true, since = -1, timer = 0;
+    let alive = true, since = 0, timer = 0;
     const tick = async () => {
       try {
         const d = await api.liveData(jobId, since);
         if (!alive) return;
-        if (d.series.length) since = d.series[d.series.length - 1].t;
+        if (d.series.length) since = d.series[d.series.length - 1].frame;
         setData(d);
-        if (d.series.length) setSamples((prev) => { const cut = d.series[d.series.length - 1].t - 60; return [...prev, ...d.series].filter((x) => x.t > cut); });
+        if (d.series.length) setSamples((prev) => prev.concat(d.series));
       } catch { /* session not started yet or just ended */ }
       if (alive) timer = window.setTimeout(tick, 250);
     };
@@ -31,13 +31,16 @@ export function LiveInsights({ jobId }: { jobId: string }) {
     return () => { alive = false; window.clearTimeout(timer); };
   }, [jobId]);
 
-  const t = useMemo(() => samples.map((s) => s.t), [samples]);
+  // charts draw at most ~2000 points (every frame is kept; long sessions are thinned only for drawing)
+  const drawn = useMemo(() => { const k = Math.ceil(samples.length / 2000) || 1; return k === 1 ? samples : samples.filter((_, i) => i % k === 0 || i === samples.length - 1); }, [samples]);
+  const t = useMemo(() => drawn.map((s) => s.t), [drawn]);
   const names = useMemo(() => Array.from(new Set(samples.flatMap((s) => Object.keys(s.tips)))), [samples]);
   const lines = useMemo(() => {
-    if (view === "risk") return [{ name: "Risk score", values: samples.map((s) => s.score) }];
+    if (view === "risk") return [{ name: "Risk score", values: bridge(drawn, drawn.map((s) => s.score)) }];
     const key = view === "distance" ? "dist" : view === "speed" ? "speed" : "ttc";
-    return names.map((n) => ({ name: tipName(n), values: samples.map((s) => s.tips[n]?.[key] ?? null) }));
-  }, [samples, names, view]);
+    return names.map((n) => ({ name: tipName(n), values: bridge(drawn, drawn.map((s) => s.tips[n]?.[key] ?? null)) }));
+  }, [drawn, names, view]);
+  const seconds = useMemo(() => perSecond(samples, names), [samples, names]);
   const unit = view === "distance" ? " px" : view === "speed" ? " px/s" : view === "ttc" ? " s" : "";
   const last = samples[samples.length - 1];
   const info = data?.info ?? {};
@@ -47,7 +50,7 @@ export function LiveInsights({ jobId }: { jobId: string }) {
     <div className="grid border-t border-line @4xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-w-0 border-line p-4 @4xl:border-r">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="m-0 text-[13px] font-semibold">Live signals <span className="font-normal text-muted tabular">· every frame · last 60 s · frame {last?.frame ?? 0}</span></h3>
+          <h3 className="m-0 text-[13px] font-semibold">Live signals <span className="font-normal text-muted tabular">· every frame · whole session · {(last?.t ?? 0).toFixed(1)} s · frame {last?.frame ?? 0}</span></h3>
           <div role="tablist" aria-label="Live signal" className="flex gap-1 rounded-lg bg-[var(--surface-2)] p-0.5">
             {VIEWS.map((v) => (
               <button key={v.id} role="tab" aria-selected={view === v.id} onClick={() => setView(v.id)}
@@ -56,7 +59,7 @@ export function LiveInsights({ jobId }: { jobId: string }) {
           </div>
         </div>
         {samples.length > 1
-          ? <LineChart key={view} t={t} lines={lines} unit={unit} height={200} colorBy={view === "risk" ? samples.map((s) => s.risk) : undefined} />
+          ? <LineChart key={view} t={t} lines={lines} unit={unit} height={200} colorBy={view === "risk" ? drawn.map((s) => s.risk) : undefined} />
           : <div className="grid h-[200px] place-items-center text-[13px] text-muted">Waiting for the first tracked frames…</div>}
         <div className="mt-4 grid grid-cols-1 gap-3 @xl:grid-cols-2">
           {names.length === 0 && <p className="m-0 text-[13px] text-muted">No instrument tip in view.</p>}
@@ -75,6 +78,31 @@ export function LiveInsights({ jobId }: { jobId: string }) {
               </div>
             );
           })}
+        </div>
+      </div>
+      <div className="min-w-0 border-t border-line p-4 @4xl:col-span-2">
+        <h3 className="m-0 mb-2 text-[13px] font-semibold">Every second <span className="font-normal text-muted tabular">· {seconds.length} s · newest first</span></h3>
+        <div className="max-h-[320px] overflow-auto rounded-lg border border-line">
+          <table className="w-full border-collapse text-left text-xs tabular">
+            <thead className="sticky top-0 bg-[var(--surface-2)]"><tr>
+              <th className="px-2 py-1.5 font-medium">Second</th><th className="px-2 py-1.5 font-medium">Frames</th><th className="px-2 py-1.5 font-medium">Risk (max)</th>
+              {names.map((n) => <th key={n} className="px-2 py-1.5 font-medium">{tipName(n)}: min dist · max speed</th>)}
+              <th className="px-2 py-1.5 font-medium">Min contact in</th><th className="px-2 py-1.5 font-medium">Bleeding</th><th className="px-2 py-1.5 font-medium">Warning</th>
+            </tr></thead>
+            <tbody>
+              {seconds.length === 0 && <tr><td className="px-2 py-2 text-muted" colSpan={6 + names.length}>Waiting for the first second…</td></tr>}
+              {seconds.map((r) => (
+                <tr key={r.sec} className="border-t border-line">
+                  <td className="px-2 py-1">{r.sec}–{r.sec + 1} s</td><td className="px-2 py-1">{r.frames}</td>
+                  <td className="px-2 py-1"><span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: RISK_VAR[r.risk] }} aria-hidden />{r.risk}</td>
+                  {names.map((n) => <td key={n} className="px-2 py-1">{fmt(r.tips[n]?.dist)} px · {fmt(r.tips[n]?.speed)} px/s{r.tips[n]?.target ? ` · ${nice(r.tips[n].target)}` : ""}</td>)}
+                  <td className={`px-2 py-1 ${r.ttc != null && r.ttc <= 1 ? "text-err" : ""}`}>{r.ttc == null ? "–" : `${r.ttc.toFixed(1)} s`}</td>
+                  <td className="px-2 py-1">{r.bleeding ? <span className="text-err">yes</span> : "no"}</td>
+                  <td className="px-2 py-1 text-err">{r.warning}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
       <aside className="flex min-h-0 flex-col border-t border-line @4xl:border-t-0" aria-label="Live status and events">
@@ -101,4 +129,40 @@ export function LiveInsights({ jobId }: { jobId: string }) {
       </aside>
     </div>
   );
+}
+
+const RANK: Record<string, number> = { Unavailable: 0, Minimal: 1, Low: 2, Medium: 3, High: 4 };
+type SecRow = { sec: number; frames: number; risk: string; ttc: number | null; bleeding: boolean; warning: string;
+  tips: Record<string, { dist: number | null; speed: number | null; target: string | null }> };
+
+/** One row per second of the session (newest first): worst risk, closest distance, fastest speed, soonest contact. */
+function perSecond(samples: LiveSample[], names: string[]): SecRow[] {
+  const rows = new Map<number, SecRow>();
+  for (const s of samples) {
+    const sec = Math.floor(s.t);
+    let r = rows.get(sec);
+    if (!r) { r = { sec, frames: 0, risk: "Unavailable", ttc: null, bleeding: false, warning: "", tips: {} }; rows.set(sec, r); }
+    r.frames += 1;
+    if ((RANK[s.risk] ?? 0) > (RANK[r.risk] ?? 0)) r.risk = s.risk;
+    r.bleeding ||= s.bleeding;
+    if (s.warning && !r.warning) r.warning = s.warning;
+    for (const n of names) {
+      const v = s.tips[n];
+      if (!v) continue;
+      const c = (r.tips[n] ??= { dist: null, speed: null, target: null });
+      if (v.dist != null && (c.dist == null || v.dist < c.dist)) { c.dist = v.dist; c.target = v.target; }
+      if (v.speed != null && (c.speed == null || v.speed > c.speed)) c.speed = v.speed;
+      if (v.ttc != null && (r.ttc == null || v.ttc < r.ttc)) r.ttc = v.ttc;
+    }
+  }
+  return [...rows.values()].reverse();
+}
+
+/** Tips drop out for single frames; hold the last value across gaps under 0.5 s so the line stays continuous. */
+function bridge(samples: LiveSample[], values: (number | null)[]): (number | null)[] {
+  let last: number | null = null, lastT = -Infinity;
+  return values.map((v, i) => {
+    if (v != null) { last = v; lastT = samples[i].t; return v; }
+    return last != null && samples[i].t - lastT < 0.5 ? last : null;
+  });
 }

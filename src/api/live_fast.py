@@ -14,7 +14,6 @@ from __future__ import annotations
 import csv
 import threading
 import time
-from collections import deque
 from pathlib import Path
 
 import cv2
@@ -45,7 +44,7 @@ class FastLive:
         self.out_csv = out_csv
         self._csv = None
         self._w = None
-        self.series: deque = deque(maxlen=3600)         # live charts: every frame, last 60 s at up to 60 fps
+        self.series: list[dict] = []                    # live charts: every frame of the whole session
         self.events: list[dict] = []                    # live event log (warnings, risk changes, bleeding, CVS)
         self.info: dict = {}                            # latest keyframe extras (score, bleeding, CVS, reason)
         self._last_sample = 0.0
@@ -160,7 +159,6 @@ class FastLive:
 
     def _event(self, t: float, kind: str, label: str) -> None:
         self.events.append({"t": round(t, 2), "kind": kind, "label": label})
-        del self.events[:-200]
 
     def _sample(self, now: float, warning: str) -> None:
         """Record a chart sample for EVERY frame and log state changes as events (called under the lock)."""
@@ -190,10 +188,10 @@ class FastLive:
         self.series.append({"t": round(t, 3), "frame": self.frames, "risk": self.risk, "score": self.info.get("risk_score"),
                             "warning": warning, "bleeding": bool(self.info.get("bleeding")), "tips": tips})
 
-    def snapshot(self, since: float = -1.0) -> dict:
-        """Live charts / events / readouts for the browser."""
+    def snapshot(self, since: int = 0) -> dict:
+        """Live charts / events / readouts: every frame after frame number `since` (series[i] is frame i + 1)."""
         with self.lock:
-            return {"series": [x for x in self.series if x["t"] > since], "events": list(self.events),
+            return {"series": self.series[max(0, int(since)):], "events": list(self.events),
                     "info": dict(self.info), "risk": self.risk, "fps": round(self.fps, 1)}
 
     def render(self):

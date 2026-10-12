@@ -268,13 +268,13 @@ export default function App() {
                 <nav aria-label="Breadcrumb" className="text-xs text-muted">
                   <button className="hover:text-ink hover:underline" onClick={() => go("landing")}>Home</button> / Library
                 </nav>
-                <h1 className="m-0 truncate text-[17px] font-semibold tracking-tight">{current ?? "No analysis selected"}</h1>
+                <h1 className="m-0 truncate text-[17px] font-semibold tracking-tight">{liveJob ? "Live session" : current ?? "No analysis selected"}</h1>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {detail && <button className={`btn h-9 px-3 text-[13px] ${compare ? "border-ink" : ""}`} aria-pressed={compare} onClick={() => setCompare((c) => !c)} title="Compare with another analysis"><Svg d={Icon.compare} /><span className="hidden md:inline">Compare</span></button>}
-              {detail && <DownloadMenu run={detail.name} />}
-              {detail && <button className={`btn h-9 px-3 text-[13px] ${aiOpen ? "border-ink" : ""}`} aria-pressed={aiOpen} aria-controls="ai-panel"
+              {detail && !liveJob && <button className={`btn h-9 px-3 text-[13px] ${compare ? "border-ink" : ""}`} aria-pressed={compare} onClick={() => setCompare((c) => !c)} title="Compare with another analysis"><Svg d={Icon.compare} /><span className="hidden md:inline">Compare</span></button>}
+              {detail && !liveJob && <DownloadMenu run={detail.name} />}
+              {detail && !liveJob && <button className={`btn h-9 px-3 text-[13px] ${aiOpen ? "border-ink" : ""}`} aria-pressed={aiOpen} aria-controls="ai-panel"
                 onClick={() => setAiOpen((o) => !o)} title="AI explanation panel">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M12 3v3m0 12v3M3 12h3m12 0h3M6 6l2 2m8 8 2 2m0-12-2 2M8 16l-2 2" /></svg>
                 <span className="hidden md:inline">AI</span></button>}
@@ -319,7 +319,8 @@ export default function App() {
           )}
           {runs && runs.length === 0 && <EmptyState onFocusForm={() => { setMenu(true); setTimeout(() => side.current?.focusForm(), 320); }} />}
 
-          {(loading || (!detail && runs?.length !== 0)) && !err ? (
+          {/* while a live session runs, show only the live view (not the previously opened saved analysis) */}
+          {liveJob ? null : (loading || (!detail && runs?.length !== 0)) && !err ? (
             <div className="space-y-6" aria-busy="true" aria-label="Loading analysis">
               <div className="grid grid-cols-2 gap-4 @2xl:grid-cols-3 @6xl:grid-cols-6">{Array.from({ length: 6 }, (_, k) => <div key={k} className="skeleton h-[104px]" />)}</div>
               <div className="grid grid-cols-1 gap-4 @4xl:grid-cols-2"><div className="skeleton aspect-video" /><div className="skeleton aspect-video" /></div>
@@ -436,7 +437,7 @@ export default function App() {
         </div>
       </main>
 
-      {detail && (
+      {detail && !liveJob && (
         <div id="ai-panel" className="contents">
           <SidePanel open={aiOpen} onClose={() => setAiOpen(false)} title="AI explanation" badge={<span className="chip chip-info">gpt-oss</span>}>
             <AiExplain run={detail.name} />

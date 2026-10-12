@@ -478,8 +478,8 @@ def live_stream(job_id: str):
 
 
 @app.get("/api/live/{job_id}/data")
-def live_data(job_id: str, since: float = -1.0):
-    """Live charts, event log and readouts for a running live session (rolling last 60 s)."""
+def live_data(job_id: str, since: int = 0):
+    """Live charts, event log and readouts for a running live session: every frame after frame `since`."""
     fast = FAST.get(job_id)
     if fast is None:
         raise HTTPException(404, "no live session")
