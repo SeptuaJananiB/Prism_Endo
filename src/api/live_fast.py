@@ -197,7 +197,8 @@ class FastLive:
             if best is None or s["risk"] > best[0]:
                 best = (s["risk"], n, s, parts)
         if best is None:
-            self.score, self.risk, self.why = None, "Unavailable", "no tracked instrument tip"
+            # no instrument tip in view -> nothing can touch tissue: no risk (score 0) for this frame
+            self.score, self.risk, self.why = 0.0, "Minimal", "No instrument tip detected - no risk"
             return
         th = c["thresholds"]
         sc = best[0]

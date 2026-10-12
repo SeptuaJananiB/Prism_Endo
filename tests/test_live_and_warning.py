@@ -68,3 +68,14 @@ def test_fast_live_risk_is_computed_for_every_frame():
     assert scores[-1] > scores[0]                                              # closer to tissue -> higher risk
     assert series[-1]["risk"] in ("Medium", "High") and fl.risk != "Minimal"   # not the keyframe's category
     assert "liver" in fl.snapshot()["info"]["explanation"]
+
+
+def test_fast_live_no_tip_means_no_risk():
+    from src.api.live_fast import FastLive
+
+    fl = FastLive()
+    img = np.zeros((120, 160, 3), np.uint8)
+    fl.keyframe(img, {"risk_category": "Unavailable"}, None, None, [], [], ["grasper_tip"])
+    info = fl.frame(img)
+    assert info["risk"] == "Minimal" and info["risk_score"] == 0.0
+    assert fl.snapshot()["series"][-1]["score"] == 0.0
