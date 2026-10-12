@@ -37,6 +37,12 @@ export type Job = {
   status: "queued" | "loading" | "running" | "finished" | "failed" | "cancelled";
   cancel?: boolean;
   phase?: string;
+  live?: boolean;
+  end?: boolean;
+  live_fps?: number;
+  risk?: string;
+  warning?: string;
+  bleeding?: boolean;
   done: number;
   total: number | null;
   run?: string;
@@ -71,6 +77,9 @@ export const api = {
     j<{ text: string; model: string; created: number; cached: boolean }>(
       `/api/runs/${encodeURIComponent(name)}/explain${refresh ? "?refresh=true" : ""}`, { method: "POST" }),
   active: () => j<Job | Record<string, never>>("/api/active"),
+  finish: (id: string) => j<Job>(`/api/jobs/${id}/finish`, { method: "POST" }),
+  cameras: () => j<{ cameras: number[] }>("/api/cameras"),
+  liveUrl: (id: string) => `/api/live/${id}.mjpg`,
   cancel: (id: string) => j<Job>(`/api/jobs/${id}/cancel`, { method: "POST" }),
   flags: (name: string) => j<{ t: number; frame: number; kind: "agree" | "wrong" | "important"; note: string }[]>(`/api/runs/${encodeURIComponent(name)}/flags`),
   saveFlags: (name: string, flags: object[]) =>

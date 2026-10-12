@@ -153,3 +153,17 @@ def _wrap(s: str, n: int) -> list[str]:
     if cur:
         lines.append(cur)
     return lines[:3]
+
+
+def draw_contact_warning(img: np.ndarray, detail: str, frame_index: int) -> np.ndarray:
+    """Pre-contact early warning: pulsing red frame border + a short label (predicted time to contact)."""
+    h, w = img.shape[:2]
+    on = (frame_index // 4) % 2 == 0  # pulse every 4 frames
+    th = 6 if on else 3
+    cv2.rectangle(img, (th // 2, th // 2), (w - th // 2 - 1, h - th // 2 - 1), (40, 40, 230), th)
+    label = f"CONTACT WARNING  {detail}"
+    (tw, tht), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+    x, y = (w - tw) // 2, h - 18
+    cv2.rectangle(img, (x - 8, y - tht - 8), (x + tw + 8, y + 7), (40, 40, 230), -1)
+    cv2.putText(img, label, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+    return img

@@ -57,19 +57,45 @@ def list_image_frames(folder: Path, pattern: str | None = None) -> list[Path]:
     return [p for _, p in keyed]
 
 
+def live_target(source) -> int | str | None:
+    """Live capture source: 'camera:N' / 'N' (webcam or capture card) -> int, 'rtsp://...' / 'http(s)://...' -> URL."""
+    s = str(source).strip()
+    if s.lower().startswith("camera:") and s[7:].isdigit():
+        return int(s[7:])
+    if s.isdigit():
+        return int(s)
+    if s.lower().startswith(("rtsp://", "rtmp://", "http://", "https://", "udp://")):
+        return s
+    return None
+
+
 class FrameSource:
-    """Iterate frames from a video file or an image-sequence folder."""
+    """Iterate frames from a video file, an image-sequence folder, or a LIVE source (camera index / stream URL)."""
 
     def __init__(self, source: str | Path, fps: float | None = None,
                  max_frames: int | None = None, stride: int = 1,
                  image_pattern: str | None = None):
-        self.source = Path(source)
+        self.live = live_target(source)
+        self.source = Path(str(source)) if self.live is None else str(source)
         self.max_frames = max_frames
         self.stride = max(1, int(stride))
         self._cap = None
         self._files: list[Path] = []
 
-        if self.source.is_dir():
+        if self.live is not None:
+            self.kind = "live"
+            cap = _open_live(self.live)
+            ok, first = cap.read()
+            if not ok or first is None:
+                cap.release()
+                raise IOError(f"No frames from live source {source} (camera busy, wrong index or URL?)")
+            self._cap = cap
+            self._first = first
+            reported = cap.get(cv2.CAP_PROP_FPS)
+            self.fps = float(fps or (reported if reported and 1 < reported <= 120 else 30.0))
+            self.height, self.width = first.shape[:2]
+            self.total_source_frames = 0  # unknown: runs until stopped (or max_frames)
+        elif self.source.is_dir():
             self.kind = "images"
             self._files = list_image_frames(self.source, image_pattern)
             if not self._files:
@@ -99,6 +125,9 @@ class FrameSource:
         return min(n, self.max_frames) if self.max_frames else n
 
     def __iter__(self) -> Iterator[Frame]:
+        if self.kind == "live":
+            yield from self._iter_live()
+            return
         if self.kind == "images":
             yield from self._iter_images()
         else:
@@ -118,6 +147,29 @@ class FrameSource:
             base = first_num if (num is not None and first_num is not None) else 0
             yield Frame(out_idx, src_idx, (src_idx - base) / self.fps, img, path.name)
             out_idx += 1
+
+    def _iter_live(self) -> Iterator[Frame]:
+        """Real-time capture: timestamps from the wall clock; always the NEWEST frame (stale buffered frames are
+        dropped), so a slower pipeline stays in sync with what the camera shows now."""
+        import time
+
+        cap, t0, out_idx, src_idx = self._cap, time.perf_counter(), 0, 0
+        img = self._first
+        try:
+            while True:
+                if self.max_frames is not None and out_idx >= self.max_frames:
+                    break
+                if img is None:
+                    cap.grab()  # drop one queued frame, then decode the latest
+                    ok, img = cap.read()
+                    if not ok:
+                        break
+                yield Frame(out_idx, src_idx, time.perf_counter() - t0, img, f"live_{src_idx:06d}")
+                out_idx += 1
+                src_idx += 1
+                img = None
+        finally:
+            cap.release()
 
     def _iter_video(self) -> Iterator[Frame]:
         cap = cv2.VideoCapture(str(self.source))
@@ -217,3 +269,32 @@ def to_browser_mp4(src: str | Path, dst: str | Path | None = None) -> Path | Non
     except (subprocess.SubprocessError, OSError):
         return None
     return dst if dst.is_file() and dst.stat().st_size > 0 else None
+
+
+def _open_live(target: int | str):
+    """Open a webcam / capture card (DirectShow on Windows, small buffer) or a network stream with OpenCV."""
+    import sys
+
+    if isinstance(target, int):
+        cap = cv2.VideoCapture(target, cv2.CAP_DSHOW) if sys.platform == "win32" else cv2.VideoCapture(target)
+    else:
+        cap = cv2.VideoCapture(target)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    if not cap.isOpened():
+        raise IOError(f"Could not open live source {target}")
+    return cap
+
+
+def list_cameras(max_index: int = 4) -> list[int]:
+    """Indexes of cameras / capture cards that deliver a frame (quick probe)."""
+    found = []
+    for i in range(max_index):
+        try:
+            cap = _open_live(i)
+            ok, _ = cap.read()
+            cap.release()
+            if ok:
+                found.append(i)
+        except IOError:
+            pass
+    return found

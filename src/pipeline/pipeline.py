@@ -38,7 +38,7 @@ from src.proximity.scale import mm_per_px
 from src.tracking.sources import DLCKeypointSource, HybridKeypointSource, MaskTipKeypointSource, find_dlc_predictions
 from src.utils.config import resolve_path
 from src.utils.device import describe_hardware, get_logger, select_device
-from src.utils.video_io import FrameSource, VideoWriter, to_browser_mp4
+from src.utils.video_io import FrameSource, VideoWriter, live_target, to_browser_mp4
 
 log = get_logger("prism.pipeline")
 _MODELS: dict = {}  # loaded CVS / bleeding models, reused across pipelines with different cheap settings
@@ -126,6 +126,11 @@ class PrismPipeline:
                 self.bleeding = _cached(("bleed", str(ck), ck.stat().st_mtime, str(self.device), json.dumps(bcfg, sort_keys=True, default=str)), lambda: BleedingDetector(ck, bcfg.get("every_s", 0.5), bcfg.get("min_frac", 0.002),
                                                  self.device if bcfg.get("use_gpu", True) else "cpu"))
         self.should_stop: Callable[[], bool] = lambda: False   # set by the UI server: Stop button
+        self.end_stream: Callable[[], bool] = lambda: False    # live capture: finish and SAVE the run
+        self.on_frame: Callable | None = None                 # live view: called with (annotated_bgr, row)
+        wcfg = (cfg.get("risk", {}) or {})
+        self.ttc_warn_s = float(wcfg.get("pre_contact_warning_s", 1.0))      # warn when contact is predicted within this
+        self.ttc_min_speed = float(wcfg.get("pre_contact_min_approach_px_s", 20.0))
         self.on_phase: Callable[[str], None] = lambda _p: None  # set by the UI server: what is happening now
         self._init_warnings = list(self.warnings)
 
@@ -237,9 +242,12 @@ class PrismPipeline:
         self.on_phase("Preparing")
         if self.should_stop():
             raise Stopped()
-        frames = FrameSource(src_path, fps=icfg.get("fps"), max_frames=icfg.get("max_frames"),
+        frames = FrameSource(source if live_target(source) is not None else src_path, fps=icfg.get("fps"), max_frames=icfg.get("max_frames"),
                              stride=icfg.get("stride", 1))
-        video_id = src_path.stem if src_path.is_file() else src_path.name
+        if live_target(source) is not None:  # live capture: name the run by date and time
+            video_id = "live_" + time.strftime("%Y%m%d_%H%M%S")
+        else:
+            video_id = src_path.stem if src_path.is_file() else src_path.name
         out_dir = Path(out_dir) if out_dir else resolve_path(cfg["output"]["dir"]) / video_id
         out_dir.mkdir(parents=True, exist_ok=True)
         kp_source = self._keypoint_source(src_path)
@@ -282,6 +290,8 @@ class PrismPipeline:
         t_start = time.perf_counter()
         try:
             for fr in frames:
+                if self.end_stream():  # live capture ended by the user: stop reading, keep everything so far
+                    break
                 t0 = time.perf_counter()
                 h, w = fr.image.shape[:2]
                 diag = math.hypot(w, h)
@@ -340,6 +350,12 @@ class PrismPipeline:
                                 f"{kp.name}_prox_approach_speed_px_s": near.approach_speed_px_s if near else None,
                                 f"{kp.name}_prox_reliability": (self.tissue.target_info.get(near.target, {})
                                                                 .get("reliability") if near else None)})
+                    # pre-injury early warning: predicted time to contact = distance / speed towards the target
+                    _d = near.distance_px if near else None
+                    _a = near.approach_speed_px_s if near else None
+                    row[f"{kp.name}_ttc_s"] = (0.0 if near is not None and near.inside else
+                                               round(_d / _a, 2) if (_d is not None and _a is not None
+                                                                     and _a > self.ttc_min_speed and _d > 0) else None)
                     row.update(r.as_dict(f"{kp.name}_risk_"))
                     if self.mm_cfg.get("enabled"):  # always write the columns (stable CSV schema)
                         for col in ("mm_per_px_approx", "prox_distance_mm_approx", "speed_mm_s_approx"):
@@ -366,6 +382,15 @@ class PrismPipeline:
                             "; ".join(r.explanation for r in risks)})
                 if self.learned is not None:
                     row["learned_risk_prob"] = round(self.learned.update(row, kp_names), 4)
+                _tt = [(row.get(f"{n}_ttc_s"), n) for n in kp_names if row.get(f"{n}_ttc_s") is not None]
+                _best = min(_tt) if _tt else None
+                row["ttc_min_s"] = _best[0] if _best else None
+                row["pre_contact_warning"] = bool(_best and _best[0] <= self.ttc_warn_s)
+                _who = _best[1].replace("_tip", " tip").replace("_", " ") if _best else ""
+                _tgt = row.get(_best[1] + "_prox_target") if _best else ""
+                row["pre_contact_detail"] = ("" if not row["pre_contact_warning"] else
+                                             f"{_who} touching {_tgt}" if _best[0] <= 0.05 else
+                                             f"{_who} -> {_tgt} in {_best[0]:.1f} s")
                 cat_counts[row["risk_category"]] = cat_counts.get(row["risk_category"], 0) + 1
 
                 if writer is not None:
@@ -388,7 +413,13 @@ class PrismPipeline:
                         from src.safety.bleeding import draw_bleeding
 
                         vis = draw_bleeding(vis, self.bleeding.mask, row.get("bleeding_detected", False))
+                    if row["pre_contact_warning"]:
+                        from src.pipeline.overlay import draw_contact_warning
+
+                        vis = draw_contact_warning(vis, row["pre_contact_detail"], fr.index)
                     writer.write(vis)
+                    if self.on_frame is not None:
+                        self.on_frame(vis, row)
                 if orig_writer is not None:
                     orig_writer.write(fr.image)
                 t4 = time.perf_counter()

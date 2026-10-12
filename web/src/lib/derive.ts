@@ -42,6 +42,8 @@ export function tracks(s: Series, n: number, nearPx = 60, target = "target"): Tr
     color: "var(--info)", hint: "Instrument mask, Dice 0.85" });
   if (s.inst_l_hook_frac || s.lhook_tip_kp_status) out.push({ id: "lhook", label: "L-hook", values: vis("inst_l_hook_frac", "lhook_tip"),
     color: "#7a5af8", hint: "Instrument mask, Dice 0.84" });
+  if (s.pre_contact_warning) out.push({ id: "contact", label: "Contact warning", values: s.pre_contact_warning.map(truthy),
+    color: "var(--risk-high)", hint: "Predicted contact within 1 s (distance / approach speed)" });
   const dist = Object.keys(s).filter((c) => c.endsWith("_prox_distance_px"));
   if (dist.length) {
     out.push({ id: "near", label: `Near ${target}`, color: "var(--risk-medium)", hint: `Tip within ${nearPx} px (image space)`,
@@ -73,6 +75,7 @@ export function episodes(t: number[], s: Series, minS = 0.5): Episode[] {
     ...runs(t, (i) => cat[i] === "High", 0.1).map((r) => ({ ...r, kind: "High risk", tone: "err" as const })),
     ...runs(t, (i) => cat[i] === "Medium" || cat[i] === "High", 2).map((r) => ({ ...r, kind: "Sustained medium+ risk", tone: "warn" as const })),
   ];
+  if (s.pre_contact_warning) ev.push(...runs(t, (i) => truthy(s.pre_contact_warning[i]), 0.1).map((r) => ({ ...r, kind: "Pre-contact warning", tone: "err" as const })));
   if (s.bleeding_detected) ev.push(...runs(t, (i) => truthy(s.bleeding_detected[i]), minS).map((r) => ({ ...r, kind: "Bleeding", tone: "err" as const })));
   if (s.cvs_achieved) ev.push(...runs(t, (i) => truthy(s.cvs_achieved[i]), minS).map((r) => ({ ...r, kind: "CVS met", tone: "ok" as const })));
   return ev.sort((a, b) => a.start - b.start);
@@ -85,6 +88,8 @@ export function milestones(t: number[], s: Series): Milestone[] {
   if (b >= 0) out.push({ i: b, t: t[b], label: "First bleeding", tone: "err" });
   const c = s.cvs_achieved ? first((i) => truthy(s.cvs_achieved[i])) : -1;
   if (c >= 0) out.push({ i: c, t: t[c], label: "CVS first met", tone: "ok" });
+  const w = s.pre_contact_warning ? first((i) => truthy(s.pre_contact_warning[i])) : -1;
+  if (w >= 0) out.push({ i: w, t: t[w], label: "First contact warning", tone: "err" });
   const h = first((i) => s.risk_category?.[i] === "High");
   if (h >= 0) out.push({ i: h, t: t[h], label: "First high risk", tone: "err" });
   const dist = Object.keys(s).filter((k) => k.endsWith("_prox_distance_px"));

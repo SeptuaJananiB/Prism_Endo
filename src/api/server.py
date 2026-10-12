@@ -19,7 +19,7 @@ from pathlib import Path
 import cv2
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -31,7 +31,7 @@ CFG_PATH = ROOT / "configs" / "pipeline.yaml"
 DIST = ROOT / "web" / "dist"
 COLS_PREFIX = ("timestamp_s", "risk_score", "risk_category", "bleeding_frac", "bleeding_detected",
                "cvs_c1", "cvs_c2", "cvs_c3", "cvs_achieved", "inst_grasper_frac", "inst_l_hook_frac",
-               "risk_explanation")
+               "risk_explanation", "ttc_min_s", "pre_contact_warning", "pre_contact_detail")
 COLS_SUFFIX = ("_prox_distance_px", "_speed_px_s", "_kp_status", "_kp_source", "_prox_inside", "_prox_target",
                "_risk_explanation")
 UPLOADS = ROOT / "outputs" / "uploads"
@@ -60,6 +60,7 @@ def _stats(d: Path) -> dict:
 
 app = FastAPI(title="PRISM-Endo API")
 JOBS: dict[str, dict] = {}
+LIVE_FRAMES: dict[str, bytes] = {}  # job id -> latest annotated JPEG (live view)
 _PIPES: dict[str, object] = {}
 _LOCK = threading.Lock()
 
@@ -305,6 +306,14 @@ def _work(job_id: str, req: RunRequest):
         cfg["risk"]["enabled"] = req.risk
         cfg["input"]["max_frames"] = int(req.max_frames) or None
         cfg["input"]["stride"] = int(req.stride)
+        from src.utils.video_io import live_target
+
+        live = live_target(req.source) is not None
+        job["live"] = live
+        if live:  # real-time preset: lighter tissue cadence, DLC cannot pre-analyse a live stream
+            cfg.setdefault("tissue", {})["every_n_frames"] = max(2, int(cfg.get("tissue", {}).get("every_n_frames", 1)))
+            if cfg["keypoints"]["source"] in ("hybrid", "dlc", "auto"):
+                cfg["keypoints"]["source"] = "mask_tip"
         if req.targets:
             cfg.setdefault("proximity", {})["target_classes"] = list(req.targets)
         if req.show_all_tissue is not None:
@@ -315,6 +324,21 @@ def _work(job_id: str, req: RunRequest):
         pipe = _pipeline(cfg)
         pipe.should_stop = lambda: bool(job.get("cancel"))
         pipe.on_phase = lambda ph: job.update(phase=ph)
+        pipe.end_stream = lambda: bool(job.get("end"))
+        if live:
+            t_live = [time.perf_counter()]
+
+            def on_frame(vis, row):
+                ok, buf = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 78])
+                if ok:
+                    LIVE_FRAMES[job_id] = buf.tobytes()
+                now = time.perf_counter()
+                job.update(live_fps=round(1.0 / max(1e-3, now - t_live[0]), 1), risk=row.get("risk_category"),
+                           warning=row.get("pre_contact_detail") or "", bleeding=bool(row.get("bleeding_detected")))
+                t_live[0] = now
+            pipe.on_frame = on_frame
+        else:
+            pipe.on_frame = None
         job["status"] = "running"
 
         def progress(i, n):
@@ -324,7 +348,7 @@ def _work(job_id: str, req: RunRequest):
 
         if job.get("cancel"):
             raise Cancelled()
-        summary = pipe.run(resolve_path(req.source), tmp, progress)
+        summary = pipe.run(req.source if live else resolve_path(req.source), tmp, progress)
         name = _finalise(tmp, str(summary.get("video_id") or Path(req.source).stem))
         job.update(status="finished", run=name, finished=time.time())
     except Cancelled:
@@ -332,6 +356,7 @@ def _work(job_id: str, req: RunRequest):
     except Exception as e:  # report to the UI instead of crashing the server
         job.update(status="failed", error=str(e))
     finally:
+        LIVE_FRAMES.pop(job_id, None)
         if tmp.exists():  # stopped or failed: never leave partial results behind
             shutil.rmtree(tmp, ignore_errors=True)
 
@@ -342,7 +367,9 @@ def start_run(req: RunRequest):
     if busy:
         raise HTTPException(409, f"Another analysis ({Path(busy['source']).name}) is still running. "
                                  "Wait for it to finish or stop it first.")
-    if not resolve_path(req.source).exists():
+    from src.utils.video_io import live_target
+
+    if live_target(req.source) is None and not resolve_path(req.source).exists():
         raise HTTPException(400, "input not found")
     job_id = uuid.uuid4().hex[:8]
     JOBS[job_id] = {"id": job_id, "status": "queued", "done": 0, "total": None, "source": req.source,
@@ -370,6 +397,41 @@ def cancel(job_id: str):
         j["cancel"] = True
         j["status_note"] = "stopping"
     return j
+
+
+@app.post("/api/jobs/{job_id}/finish")
+def finish(job_id: str):
+    """Live capture: stop reading the camera and SAVE the analysis recorded so far (Stop discards it)."""
+    j = JOBS.get(job_id)
+    if not j:
+        raise HTTPException(404, "job not found")
+    j["end"] = True
+    return j
+
+
+@app.get("/api/cameras")
+def cameras():
+    from src.utils.video_io import list_cameras
+
+    if _active():
+        raise HTTPException(409, "an analysis is running (cameras are probed only when idle)")
+    return {"cameras": list_cameras(4)}
+
+
+@app.get("/api/live/{job_id}.mjpg")
+def live_stream(job_id: str):
+    """Live view: the latest annotated frame as an MJPEG stream (works in a plain <img>)."""
+    def gen():
+        last = None
+        while JOBS.get(job_id, {}).get("status") in ("queued", "loading", "running"):
+            buf = LIVE_FRAMES.get(job_id)
+            if buf is not None and buf is not last:
+                last = buf
+                yield (b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + str(len(buf)).encode()
+                       + b"\r\n\r\n" + buf + b"\r\n")
+            time.sleep(0.03)
+    return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame",
+                             headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/jobs/{job_id}")

@@ -27,7 +27,7 @@
 
 ## Contents
 
-1. [Why PRISM-Endo](#why-prism-endo)
+1. [Project objectives](#project-objectives) · [Why PRISM-Endo](#why-prism-endo)
 2. [What it does](#what-it-does)
 3. [Results on held-out data](#results-on-held-out-data)
 4. [How it works](#how-it-works)
@@ -45,6 +45,15 @@
 16. [Acknowledgements](#acknowledgements) · [Citation](#citation) · [License](#license)
 
 ---
+
+## Project objectives
+
+| Objective | Status | Where |
+|---|---|---|
+| Identify gaps in surgical risk prediction | ✅ Done | [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) |
+| Extract, track and analyse tool motion and tissue proximity | ✅ Done | pipeline stages 1–5 below |
+| Predict pre-injury risk and generate visual warnings | ✅ Done | risk score + time-to-contact warning (stage 6) |
+| Real-time endoscopic video capture using OpenCV | ✅ Done | live capture (stage 8) |
 
 ## Why PRISM-Endo
 
@@ -68,6 +77,8 @@ straight to the moments that matter. Every number comes with an honest statement
 | **Tissue masks** | 12 CholecSeg8k classes, each with a *tested / not tested* reliability flag |
 | **Tip-to-tissue proximity** | distance from every tip to the target tissues you choose |
 | **Risk indicator** | explainable rule-based score (Minimal → High) with a plain-language reason per frame |
+| **Pre-contact early warning** | predicted **time to contact** (distance ÷ approach speed) with a pulsing on-video alert, events and a timeline track |
+| **Live capture** | real-time analysis from a webcam, capture card or stream URL (OpenCV), shown live in the browser |
 | **Bleeding** | learned detector (SurgBlood) with an outline on the video |
 | **Critical View of Safety** | learned estimate of the three CVS criteria (Endoscapes) |
 | **AI explanation** | **gpt-oss** writes what happened in the video, key moments and risk findings — read aloud on request |
@@ -152,6 +163,11 @@ A transparent, rule-based score built from four parts, smoothed over time:
 | Speed | 0.15 | how fast the tip moves overall |
 | Abrupt change | 0.15 | sudden changes of direction or acceleration |
 
+**Pre-contact early warning:** for every tip, PRISM-Endo predicts the **time to contact** with the nearest target
+tissue (distance ÷ speed towards it). When contact is predicted within **1 s** (configurable), the video shows a
+pulsing red border with *"CONTACT WARNING — grasper tip → liver in 0.6 s"*, and the moment appears as an event,
+a milestone and a timeline track.
+
 Categories: **Minimal** < 0.25 ≤ **Low** < 0.5 ≤ **Medium** < 0.75 ≤ **High**. Every frame carries the reason, e.g.
 *"Grasper tip: Medium — tip 5 px from liver (+0.46); moving towards liver at 184 px/s (+0.14)"*.
 
@@ -160,7 +176,13 @@ Categories: **Minimal** < 0.25 ≤ **Low** < 0.5 ≤ **Medium** < 0.75 ≤ **Hig
 - **Critical View of Safety:** ResNet-50 trained on Endoscapes-CVS201 surgeon labels, estimating each of the
   three criteria (C1–C3) every second.
 
-### 8. AI explanation (gpt-oss)
+### 8. Live capture (real time)
+OpenCV opens a **webcam or capture card** (`camera:0`) or a **stream URL** (`rtsp://`, `http://`). Frames are read
+as they arrive — stale buffered frames are dropped so the analysis stays in sync with the camera — and each annotated
+frame is streamed to the browser as a live view, with the current risk and any contact warning. **Finish & save**
+keeps the session as a normal analysis; **Discard** throws it away. On a laptop GPU this runs at about 6 frames/s.
+
+### 9. AI explanation (gpt-oss)
 A compact, **numbers-only** summary of the analysis (risk timeline, events, bleeding, CVS, instruments, settings —
 never video or frames) is sent to **gpt-oss** on an OpenAI-compatible API (Groq). It writes:
 *What happened in the video · Key moments · Risk and safety · How far to trust this*. The prompt forbids inventing
@@ -292,6 +314,7 @@ PRISM-Endo/
 | [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) | Web app tokens, typography, components, accessibility |
 | [QA_REPORT.md](QA_REPORT.md) | Test strategy, coverage, defects found and fixed |
 | [AGENTS.md](AGENTS.md) | Rules for automated coding tools working on this repo |
+| [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) | Gaps in surgical risk prediction and how PRISM-Endo addresses them |
 | [docs/TECHNICAL_GUIDE.md](docs/TECHNICAL_GUIDE.md) | Every command, training run and measurement |
 | [docs/DLC_CLEAN_EVALUATION.md](docs/DLC_CLEAN_EVALUATION.md) | Leakage-free DeepLabCut evaluation |
 | [docs/DATASETS.md](docs/DATASETS.md) | Data layout and splits |
@@ -337,7 +360,7 @@ Models trained on non-commercial (NC) data inherit those restrictions.
 - [ ] Expert-labelled safe / unsafe dissection zones and a validated model for them
 - [ ] Learned injury-risk model from expert event labels
 - [ ] Camera calibration for true millimetres
-- [ ] Real-time processing (model optimisation, ONNX / TensorRT)
+- [ ] Full video-rate live processing (model optimisation, ONNX / TensorRT)
 - [ ] Hosted deployment with a permanent URL
 
 ## Acknowledgements

@@ -59,6 +59,9 @@ FastAPI app `src/api/server.py`, port 8510, serving the built web app from `web/
 | POST | `/api/run` | start an analysis (409 if one is running) |
 | GET | `/api/jobs/{id}` · `/api/active` | progress, phase, status |
 | POST | `/api/jobs/{id}/cancel` | stop |
+| POST | `/api/jobs/{id}/finish` | live capture: stop reading the camera and save the session |
+| GET | `/api/cameras` | probe available cameras / capture cards |
+| GET | `/api/live/{id}.mjpg` | live annotated view (MJPEG stream) |
 | GET | `/api/llm/status` | whether a gpt-oss key is configured, model name |
 | POST | `/api/runs/{name}/explain?refresh=` | gpt-oss explanation from a numbers-only summary (`src/api/explain.py`), cached in `explanation.json` |
 

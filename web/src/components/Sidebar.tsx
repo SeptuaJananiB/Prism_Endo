@@ -39,8 +39,8 @@ function Field({ id, label, help, children }: { id: string; label: string; help?
 
 export const Sidebar = forwardRef<SidebarHandle, {
   meta: Meta | null; runs: RunSummary[] | null; current: string | null; onOpen: (n: string) => void;
-  onStart: (b: object) => void; onStop: () => void; job: Job | null; onUploaded: (src: string) => void; open: boolean; onClose: () => void;
-}>(function Sidebar({ meta, runs, current, onOpen, onStart, onStop, job, onUploaded, open, onClose }, ref) {
+  onStart: (b: object) => void; onStop: () => void; onFinish: () => void; job: Job | null; onUploaded: (src: string) => void; open: boolean; onClose: () => void;
+}>(function Sidebar({ meta, runs, current, onOpen, onStart, onStop, onFinish, job, onUploaded, open, onClose }, ref) {
   const [source, setSource] = useState("");
   const [surgery, setSurgery] = useState("");
   const [kp, setKp] = useState("hybrid");
@@ -48,6 +48,9 @@ export const Sidebar = forwardRef<SidebarHandle, {
   const [targets, setTargets] = useState<string[] | null>(null);
   const [drag, setDrag] = useState(false);
   const [up, setUp] = useState<{ name: string; p: number } | null>(null);
+  const [cams, setCams] = useState<number[]>([]);
+  const [camBusy, setCamBusy] = useState(false);
+  const [camMsg, setCamMsg] = useState("");
   const [upErr, setUpErr] = useState<string | null>(null);
   const firstField = useRef<HTMLDivElement>(null);
   const fileIn = useRef<HTMLInputElement>(null);
@@ -60,6 +63,7 @@ export const Sidebar = forwardRef<SidebarHandle, {
   const tg = targets ?? tissues.map((x) => x.name); // all tissues by default
   const { width, dragging, handleProps } = useResizable("pe-left-width", 320, 272, 480, "right");
   const pct = job?.total ? Math.round((100 * job.done) / job.total) : 0;
+  const isLive = src.startsWith("camera:");
 
   const upload = async (f: File | undefined) => {
     if (!f) return;
@@ -131,9 +135,22 @@ export const Sidebar = forwardRef<SidebarHandle, {
               <Field id="src" label="Video to analyse">
                 <div ref={firstField}>
                   <Select id="src" value={src} onChange={setSource} disabled={busy} placeholder="No videos found"
-                    options={(meta?.inputs ?? []).map((p) => ({ value: p, label: p.split(/[\\/]/).pop() ?? p, hint: p.includes("uploads") ? "uploaded" : undefined }))} />
+                    options={[
+                      ...cams.map((c) => ({ value: `camera:${c}`, label: `Live camera ${c}`, hint: "real time" })),
+                      ...(meta?.inputs ?? []).map((p) => ({ value: p, label: p.split(/[\\/]/).pop() ?? p, hint: p.includes("uploads") ? "uploaded" : undefined }))]} />
                 </div>
               </Field>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <button type="button" className="font-medium text-info hover:underline disabled:opacity-50" disabled={busy || camBusy}
+                  onClick={async () => {
+                    setCamBusy(true); setCamMsg("");
+                    try { const r = await api.cameras(); setCams(r.cameras); setCamMsg(r.cameras.length ? `${r.cameras.length} camera(s) found` : "No camera found");
+                      if (r.cameras.length) setSource(`camera:${r.cameras[0]}`); }
+                    catch (e) { setCamMsg((e as Error).message); } finally { setCamBusy(false); }
+                  }}>{camBusy ? "Searching…" : "Find live cameras"}</button>
+                {camMsg && <span className="text-muted" aria-live="polite">{camMsg}</span>}
+              </div>
+              {isLive && <p className="m-0 text-xs leading-snug text-muted">Live mode analyses the camera in real time (faster settings). Use <b>Finish &amp; save</b> to end the session.</p>}
             </Group>
 
             <Group title="2 · Model">
@@ -206,11 +223,15 @@ export const Sidebar = forwardRef<SidebarHandle, {
                       </div>
                       <span className="w-9 text-right text-xs text-muted tabular">{pct}%</span>
                     </div>
+                    {job.live && (
+                      <button type="button" onClick={onFinish} disabled={job.cancel}
+                        className="btn btn-primary h-9 w-full text-[13px]" aria-label="Finish and save live analysis">Finish &amp; save</button>
+                    )}
                     <button type="button" onClick={onStop} disabled={job.cancel}
                       className="btn h-8 w-full text-[13px] text-err hover:border-[var(--err-line)] hover:bg-[var(--err-bg)]" aria-label="Stop analysis">
-                      {job.cancel ? <>Stopping…</> : <><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden><rect x="5" y="5" width="14" height="14" rx="2.5" fill="currentColor" /></svg>Stop analysis</>}
+                      {job.cancel ? <>Stopping…</> : <><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden><rect x="5" y="5" width="14" height="14" rx="2.5" fill="currentColor" /></svg>{job.live ? "Discard" : "Stop analysis"}</>}
                     </button>
-                    <p className="m-0 text-xs leading-snug text-muted">Stopping discards this run; earlier results stay unchanged.</p>
+                    <p className="m-0 text-xs leading-snug text-muted">{job.live ? "Finish & save keeps the recording; Discard throws it away." : "Stopping discards this run; earlier results stay unchanged."}</p>
                   </div>
                 )}
               </div>

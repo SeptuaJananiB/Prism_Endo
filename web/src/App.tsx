@@ -203,6 +203,12 @@ export default function App() {
     if (!job) return;
     try { setJob(await api.cancel(job.id)); } catch (e) { toast({ tone: "err", text: (e as Error).message }); }
   };
+  const finish = async () => {
+    if (!job) return;
+    try { setJob(await api.finish(job.id)); toast({ tone: "info", text: "Finishing live session — saving the recording…" }); }
+    catch (e) { toast({ tone: "err", text: (e as Error).message }); }
+  };
+  const liveJob = job && job.live && ["queued", "loading", "running"].includes(job.status) ? job : null;
   const start = async (body: object) => {
     try { setJob(await api.start(body)); toast({ tone: "info", text: "Analysis started" }); }
     catch (e) {
@@ -248,7 +254,7 @@ export default function App() {
   return (
     <div className="flex h-dvh min-h-full overflow-hidden">
       <a href="#main" className="skip">Skip to results</a>
-      <Sidebar ref={side} meta={meta} runs={runs} current={current} onOpen={(nm) => setCurrent(nm)} onStart={start} onStop={stop} job={job}
+      <Sidebar ref={side} meta={meta} runs={runs} current={current} onOpen={(nm) => setCurrent(nm)} onStart={start} onStop={stop} onFinish={finish} job={job}
         onUploaded={(src) => { api.meta().then(setMeta); toast({ tone: "ok", text: `Uploaded ${src.split(/[\\/]/).pop()}` }); }}
         open={menu} onClose={() => setMenu(false)} />
 
@@ -281,6 +287,34 @@ export default function App() {
 
         <div className="@container mx-auto max-w-[1280px] space-y-6 px-4 py-6 sm:px-8 sm:py-8">
           {err && <p role="alert" className="chip chip-err m-0 h-auto py-2">{err}</p>}
+          {liveJob && (
+            <section className="card rise overflow-hidden" aria-label="Live analysis">
+              <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="relative flex h-2.5 w-2.5" aria-hidden><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-err opacity-60" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-err" /></span>
+                  <h2 className="m-0 text-[14px] font-semibold">Live analysis</h2>
+                  <span className="text-xs text-muted tabular">{liveJob.status === "running" ? `${liveJob.done} frames · ${liveJob.live_fps ?? "–"} fps` : liveJob.phase ?? "Starting camera…"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {liveJob.risk && <span className="chip" style={{ color: "var(--ink)", background: "var(--surface-2)" }}><span className="h-2 w-2 rounded-full" style={{ background: RISK_VAR[liveJob.risk] }} aria-hidden />Risk: {liveJob.risk}</span>}
+                  {liveJob.bleeding && <span className="chip chip-err">Bleeding</span>}
+                  <button className="btn btn-primary h-9 px-3 text-[13px]" onClick={finish} disabled={liveJob.cancel || liveJob.end}>Finish &amp; save</button>
+                  <button className="btn h-9 px-3 text-[13px] text-err" onClick={stop} disabled={liveJob.cancel}>Discard</button>
+                </div>
+              </header>
+              {liveJob.warning && (
+                <div role="alert" className="flex items-center gap-2 bg-[var(--err-bg)] px-4 py-2 text-[13px] font-medium text-err">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
+                  Contact warning: {liveJob.warning}
+                </div>
+              )}
+              <div className="grid aspect-video place-items-center bg-black">
+                {liveJob.status === "running"
+                  ? <img src={api.liveUrl(liveJob.id)} alt="Live annotated camera view" className="h-full w-full object-contain" />
+                  : <span className="text-[13px] text-white/70">{liveJob.phase ?? "Starting camera…"}</span>}
+              </div>
+            </section>
+          )}
           {runs && runs.length === 0 && <EmptyState onFocusForm={() => { setMenu(true); setTimeout(() => side.current?.focusForm(), 320); }} />}
 
           {(loading || (!detail && runs?.length !== 0)) && !err ? (
