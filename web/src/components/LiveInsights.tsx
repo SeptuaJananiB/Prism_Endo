@@ -54,7 +54,10 @@ export function LiveInsights({ jobId }: { jobId: string }) {
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;  // plain wheel scrolls the page; Ctrl + wheel zooms the chart
       e.preventDefault();
-      setSpan((sp) => Math.max(5, Math.min(Math.max(5, total - t0), sp * (e.deltaY > 0 ? 1.25 : 0.8))));
+      // proportional: a trackpad pinch sends many small events, a mouse wheel notch one large one
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      const f = Math.exp(Math.max(-60, Math.min(60, dy)) * 0.004);
+      setSpan((sp) => Math.max(5, Math.min(Math.max(5, total - t0), sp * f)));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
