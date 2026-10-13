@@ -1,90 +1,291 @@
 <div align="center">
 
-# PRISM-Endo
+# PRISM-Endo · Predictive Risk Intelligence for Endoscopic Surgery
 
-### Predictive Risk Intelligence System for Endoscopic Surgery
+**Turn laparoscopic video into frame-by-frame, explainable safety data: instruments, tips, tissue proximity, risk,
+bleeding, Critical View of Safety and suggested dissection zones. Works on recorded video and live at 30 fps.**
 
-**Instrument tracking, tissue proximity, bleeding and Critical View of Safety — frame by frame, from laparoscopic video, explained in plain language.**
+Drop a video or connect a camera. PRISM-Endo tracks every instrument tip, measures how close it comes to the tissues
+you choose, warns before contact, and explains the whole analysis in plain language.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-111111.svg)](LICENSE)
-![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
-![PyTorch](https://img.shields.io/badge/PyTorch-2.4-EE4C2C?logo=pytorch&logoColor=white)
-![DeepLabCut](https://img.shields.io/badge/DeepLabCut-3.0-6A5ACD)
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
+![Python](https://img.shields.io/badge/Python_3.11-3776AB?logo=python&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch_2.4-EE4C2C?logo=pytorch&logoColor=white)
+![DeepLabCut](https://img.shields.io/badge/DeepLabCut_3-6A5ACD)
+![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8?logo=opencv&logoColor=white)
+![React](https://img.shields.io/badge/React_18-20232A?logo=react&logoColor=61DAFB)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind_v4-06B6D4?logo=tailwindcss&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![gpt-oss](https://img.shields.io/badge/LLM-gpt--oss-412991)
-![Tests](https://img.shields.io/badge/tests-120%20unit%20%2B%2021%20e2e-067647)
-![Accessibility](https://img.shields.io/badge/WCAG-2%20AA-175CD3)
+![Tests](https://img.shields.io/badge/tests-128_unit_+_21_e2e-2ea44f)
+![Accessibility](https://img.shields.io/badge/WCAG_2-AA-175CD3)
+
+[**Quick start**](#-quick-start) ·
+[**How it works**](#-how-it-works) ·
+[**Features**](#-features) ·
+[**Results**](#-results-on-held-out-data) ·
+[**Docs**](#-documentation) ·
+[**API**](#-api) ·
+[**Project layout**](#-project-layout)
 
 </div>
 
-
 ---
 
-## Contents
+## 🧭 At a glance
 
-1. [Project objectives](#project-objectives) · [Why PRISM-Endo](#why-prism-endo)
-2. [What it does](#what-it-does)
-3. [Results on held-out data](#results-on-held-out-data)
-4. [How it works](#how-it-works)
-5. [Pipeline in detail](#pipeline-in-detail)
-6. [The web app](#the-web-app)
-7. [Outputs](#outputs)
-8. [How we evaluated](#how-we-evaluated)
-9. [Quick start](#quick-start)
-10. [Tech stack and performance](#tech-stack-and-performance)
-11. [Project structure](#project-structure)
-12. [Documentation](#documentation)
-13. [Datasets and licences](#datasets-and-licences)
-14. [Advantages](#advantages)
-15. [Roadmap](#roadmap)
-16. [Acknowledgements](#acknowledgements) · [Citation](#citation) · [License](#license)
+> [!TIP]
+> **Example.** A grasper tip is 12 px from the liver and moving towards it at 130 px/s. PRISM-Endo predicts
+> **contact in 0.3 s**, flashes a red *CONTACT WARNING* on the video, raises the frame's risk to **Medium** with the
+> reason *"tip 12px from liver (+0.42); approaching 130px/s (+0.12)"*, and logs the moment as an event on the
+> timeline. Every number comes from measured geometry and transparent rules, not from a language model.
 
----
+```mermaid
+flowchart LR
+    A["🎞️ Recorded video<br/>📷 Webcam / capture card<br/>🌐 Stream URL"] --> B(("🧠 PRISM-Endo"))
+    B --> C["🔧 Instruments + tips<br/>🫀 Tissue masks"]
+    B --> D["📏 Proximity · speed<br/>⏱️ Time to contact"]
+    C --> E["⚖️ Risk per frame<br/>+ written reason"]
+    D --> E
+    E --> F["🖥️ Web app<br/>timeline · events · live dashboard"]
+    F --> G["🤖 gpt-oss explanation<br/>🔊 read aloud"]
+```
 
-## Project objectives
+| | |
+|---|---|
+| **Problem** | Most of the risk in keyhole surgery is visible in the video, but reviewing hours of footage for near-misses is slow and subjective. Research tools look at instruments, anatomy, bleeding or CVS **separately**. |
+| **Solution** | One pipeline that combines all of them, measures **tip-to-tissue distance and approach speed** every frame, predicts **time to contact**, and lets a reviewer jump straight to the moments that matter, offline or live. |
+| **Guarantee** | Every risk value has a written reason. Every tissue is marked *tested / barely tested / not tested* on unseen patients. Every reported metric is held-out. |
+
+### Project objectives
 
 | Objective | Status | Where |
 |---|---|---|
 | Identify gaps in surgical risk prediction | ✅ Done | [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) |
-| Extract, track and analyse tool motion and tissue proximity | ✅ Done | pipeline stages 1–5 below |
-| Predict pre-injury risk and generate visual warnings | ✅ Done | risk score + time-to-contact warning (stage 6) |
-| Real-time endoscopic video capture using OpenCV | ✅ Done | live capture at 30 fps (stage 8) |
+| Extract, track and analyse tool motion and tissue proximity | ✅ Done | pipeline stages 1–5 |
+| Predict pre-injury risk and generate visual warnings | ✅ Done | risk score, time-to-contact warning, No-Go zones |
+| Real-time endoscopic video capture using OpenCV | ✅ Done | live capture at 30 fps with a live dashboard |
 
-## Why PRISM-Endo
+---
 
-Laparoscopic (keyhole) surgery is performed through small incisions while the surgeon watches a camera feed.
-Most of the risk lives in that video: an instrument moving too fast, a tip working millimetres from a critical
-structure, bleeding that starts quietly, or clipping before the anatomy is properly exposed — the
-**Critical View of Safety (CVS)**, the recognised safety check before dividing structures in gallbladder surgery.
+## 🚀 Quick start
 
-Reviewing hours of surgical video for these moments is slow and subjective. PRISM-Endo turns a video into
-**structured, explainable, frame-by-frame data** — where every instrument and tissue is, how the tips move, how
-close they come to chosen structures, when bleeding appears and whether CVS is reached — and lets a reviewer jump
-straight to the moments that matter. Every number comes with an honest statement of how far it can be trusted.
+<details open>
+<summary><b>Option A: Web app (recommended)</b></summary>
 
-## What it does
+<br/>
 
-| Output | How |
+Requires Windows, Python 3.11 and Node 20+.
+
+```powershell
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt     # AMD/Intel GPU: requirements-directml.txt in .venv-dml
+cd web; npm install; npm run build; cd ..
+.venv\Scripts\python -m uvicorn src.api.server:app --port 8510
+```
+
+Open **<http://localhost:8510>**.
+
+```mermaid
+flowchart LR
+    U["🧑 Browser<br/>localhost:8510"] --> S["FastAPI + Uvicorn<br/>serves React build"]
+    S --> P["Pipeline<br/>PyTorch · DirectML / CUDA / CPU"]
+    S --> C["📷 OpenCV capture<br/>camera · stream"]
+    P --> O[("outputs/runs/<br/>video · CSV · summary")]
+    S -.->|"numbers only, HTTPS"| G["☁️ Groq · gpt-oss"]
+```
+
+| Action | How |
 |---|---|
-| **Instrument masks** (grasper, L-hook) | U-Net segmentation |
-| **Instrument tips** | DeepLabCut for the L-hook + mask geometry for the grasper (*hybrid*) |
-| **Tip motion** | smoothed trajectories, speed, direction, abrupt-change flags, camera-motion estimate |
-| **Tissue masks** | 12 CholecSeg8k classes, each with a *tested / not tested* reliability flag |
-| **Tip-to-tissue proximity** | distance from every tip to the target tissues you choose |
-| **Risk indicator** | explainable rule-based score (Minimal → High) with a plain-language reason per frame |
-| **Pre-contact early warning** | predicted **time to contact** (distance ÷ approach speed) with a pulsing on-video alert, events and a timeline track |
-| **Live capture** | real-time analysis from a webcam, capture card or stream URL (OpenCV), shown live in the browser |
-| **Bleeding** | learned detector (SurgBlood) with an outline on the video |
-| **Critical View of Safety** | learned estimate of the three CVS criteria (Endoscapes) |
-| **AI explanation** | **gpt-oss** writes what happened in the video, key moments and risk findings — read aloud on request |
+| Analyse a video | Drop a file or pick one, choose surgery type and tissues, **Analyse** |
+| Go live | **Find live cameras**, pick a camera or paste an `rtsp://` / `http://` URL, **Analyse** |
+| Keep a live session | **Finish & save**. Throw it away: **Discard** |
+| Explain an analysis | **AI** → *Explain this analysis* → **Listen** |
 
-Everything is written to an **annotated video**, a **per-frame CSV** and a **run summary**, and explored in a
-**web app** with a synced timeline, events, reviewer flags and comparisons.
+> [!IMPORTANT]
+> **Local and private by default.** Video never leaves the machine. The optional AI explanation sends only analysis
+> numbers. `.env` (Groq key) is git-ignored. Trained weights and datasets are **not** in this repository; the
+> pipeline reports missing models instead of failing.
 
-## Results on held-out data
+</details>
 
-All numbers are measured on patients or clips that the model **never saw during training**.
+<details>
+<summary><b>Option B: Command line</b></summary>
+
+<br/>
+
+```powershell
+.venv\Scripts\python run_pipeline.py --input path\to\video.mp4 --out outputs\runs\my_video
+```
+
+Writes `annotated.mp4`, `results.csv` and `summary.json` to the output folder.
+
+</details>
+
+<details>
+<summary><b>Optional: AI explanation</b></summary>
+
+<br/>
+
+Copy `.env.example` to `.env` and set `GROQ_API_KEY` (free at <https://console.groq.com/keys>). Without it, the rest
+of the app works unchanged and the AI panel says the explanation is unavailable.
+
+</details>
+
+---
+
+## ⚙️ How it works
+
+### The pipeline
+
+```mermaid
+flowchart TD
+    V([Video / camera]) --> F[Frames]
+    F --> I[Instrument segmentation<br/><i>U-Net</i>]
+    F --> T[Tissue segmentation<br/><i>U-Net · 12 classes</i>]
+    F --> BL[Bleeding detector<br/><i>U-Net</i>]
+    F --> CV[CVS classifier<br/><i>ResNet-50</i>]
+    I --> K[Tips<br/><i>DeepLabCut + geometry</i>]
+    K --> M[Motion<br/><i>speed · approach · abrupt</i>]
+    K --> P[Proximity<br/><i>distance transform</i>]
+    T --> P
+    T --> Z[Dissection zones<br/><i>Go / No-Go</i>]
+    M --> R[Risk + reason<br/><i>rule-based</i>]
+    P --> R
+    P --> W[Time to contact<br/><i>warning</i>]
+    R --> O([Annotated video · CSV · summary])
+    W --> O
+    Z --> O
+    BL --> O
+    CV --> O
+    O --> L[gpt-oss explanation]
+
+    classDef learned fill:#eff8ff,stroke:#175cd3,color:#175cd3
+    classDef det fill:#ecfdf3,stroke:#067647,color:#067647
+    class I,T,BL,CV,K,L learned
+    class M,P,Z,R,W det
+```
+
+<sub>🔵 learned model · 🟢 deterministic, transparent rules</sub>
+
+### Live mode at 30 fps: keyframes + tracking
+
+Running every model on every frame is too slow for live video, so live mode splits the work:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Cam as 📷 Camera thread
+    participant Trk as Per-frame tracker
+    participant AI as Keyframe models (GPU)
+    participant UI as 🖥️ Browser
+
+    loop every camera frame (30 fps)
+        Cam->>Trk: newest frame (854 px)
+        Trk->>Trk: Lucas-Kanade tip tracking
+        Trk->>Trk: distance · speed · time to contact · risk
+        Trk-->>UI: annotated frame (MJPEG) + per-frame data
+    end
+    loop as fast as the GPU allows (~4–6 fps)
+        Cam->>AI: keyframe
+        AI->>AI: instruments · tissue · tips · bleeding · CVS · zones
+        AI-->>Trk: re-anchor tips, new masks and distance maps
+    end
+```
+
+| Layer | Rate (laptop GPU, measured) | What runs |
+|---|---|---|
+| **Per frame** | **30 fps** (camera rate) | optical-flow tip tracking, distance from cached maps, speed, approach, **time to contact**, **risk level**, warnings, drawing |
+| **Keyframes** | ~4–6 fps | full models: instrument + tissue segmentation, tips, bleeding, CVS, dissection zones |
+
+Measured with a paced 720p feed: 29–30 fps on a 30 fps camera, 30.0 fps sustained on a 60 fps camera.
+
+<details>
+<summary><b>Pipeline in detail</b></summary>
+
+<br/>
+
+| Stage | How |
+|---|---|
+| **1. Instruments** | U-Net (ResNet encoder, 256 × 448) segments the **grasper** and **L-hook**; trained on 11 CholecSeg8k videos with a video-level split |
+| **2. Tips (hybrid)** | **L-hook:** DeepLabCut model trained on human tip clicks, run once per video and cached. **Grasper:** geodesic rule on the mask, from where the instrument enters the view to the jaw hinge. Low-confidence tips are flagged, not silently trusted |
+| **3. Motion** | EMA-smoothed trajectories: speed, direction, acceleration, abrupt changes, plus camera-motion estimation |
+| **4. Tissue** | 12 classes, each marked *tested / barely tested / not tested* on unseen patients; an opt-in model fine-tuned on DSAD for other operations |
+| **5. Proximity** | distance from each tip to the selected tissues; approximate mm from the 5 mm shaft width, always labelled approximate |
+| **6. Risk** | transparent score, smoothed over time, with a written reason every frame (rules below) |
+| **7. Safety models** | **Bleeding:** U-Net on SurgBlood, every 0.5 s. **CVS:** ResNet-50 on Endoscapes-CVS201, criteria C1–C3 every second |
+| **8. Dissection zones** | green **Go** / red **No-Go** overlay for cholecystectomy, after GoNoGoNet and SAGES guidance ([details](docs/DISSECTION_ZONES.md)) |
+| **9. AI explanation** | numbers-only summary → **gpt-oss** → *What happened · Key moments · Risk and safety · How far to trust this*; cached, read aloud on request |
+
+</details>
+
+<details>
+<summary><b>Risk rules (deterministic, unit-tested)</b></summary>
+
+<br/>
+
+| Part | Weight | Meaning |
+|---|---|---|
+| Proximity | 0.50 | how close a tip is to a target tissue |
+| Approach | 0.20 | how fast it moves **towards** that tissue (only counted near tissue) |
+| Speed | 0.15 | how fast the tip moves overall |
+| Abrupt change | 0.15 | sudden changes of direction or acceleration |
+
+| Output | Rule |
+|---|---|
+| **Category** | **Minimal** < 0.25 ≤ **Low** < 0.5 ≤ **Medium** < 0.75 ≤ **High** |
+| **Frame risk** | worst tip in the frame; no tip in view = no risk (0) |
+| **Time to contact** | distance ÷ approach speed (approach ≥ 20 px/s) |
+| **Contact warning** | time to contact ≤ 1 s, or the tip is touching the tissue |
+| **No-Go zone** | Go = fibro-fatty tissue within 6 % of the gallbladder edge; No-Go = danger structures + 3 % margin and tissue > 16 % from the gallbladder (fractions of the image diagonal) |
+
+All thresholds live in [`configs/pipeline.yaml`](configs/pipeline.yaml).
+
+</details>
+
+---
+
+## ✨ Features
+
+| | Feature | Details |
+|---|---|---|
+| 🎞️ | **Any source** | MP4, MOV, AVI, MKV, WEBM, webcam / capture card (`camera:0`) or `rtsp://` / `http://` stream |
+| 🔧 | **Instrument tracking** | masks, tips, smoothed trajectories, speed, direction, abrupt-change flags |
+| 📏 | **Tissue proximity** | distance from every tip to the tissues you choose (all selected by default) |
+| ⏱️ | **Pre-contact warning** | time to contact with a pulsing red alert on the video, events and a timeline track |
+| ⚖️ | **Risk per frame** | Minimal → High with a plain-language reason for every frame, offline and live |
+| 🟩 | **Dissection zones** | green Go / red No-Go overlay on gallbladder video; tip-in-No-Go events |
+| 🩸 | **Bleeding** | learned detector with an outline on the video |
+| ✅ | **Critical View of Safety** | estimate of the three CVS criteria |
+| 📡 | **Live dashboard** | 30 fps view; risk, distance, speed and time-to-contact charts for every frame; last 60 s by default with scroll, zoom and pan; per-second table; live events |
+| 🧾 | **Review** | synced annotated + original video, stacked timeline, milestones, events, frame inspector, "Why this risk" |
+| 🤖 | **AI explanation** | gpt-oss report in a resizable side panel, **Listen** with voice, speed and sentence highlighting |
+| 🚩 | **Reviewer flags** | *agree · AI wrong · important*, saved per analysis to build validation data |
+| 🔀 | **Compare · export · print** | side-by-side analyses, video / CSV / JSON downloads, one-page summary |
+| 🌗 | **Accessible** | keyboard control (`Space`, `D/F`, `J/K`, `1/2/3`, `T`, `?`), light and dark, WCAG 2 AA, reduced motion |
+
+<details>
+<summary><b>Advantages</b></summary>
+
+<br/>
+
+- **Explainable, not a black box:** every risk value comes with a reason (which tip, which tissue, how close, how fast).
+- **Honest about reliability:** tissues are marked tested / not tested, low-confidence tips are shown as such.
+- **Evaluated on unseen patients:** patient-level splits and a leakage audit; every reported number is held-out.
+- **Many signals in one view:** instruments, tips, motion, proximity, zones, bleeding and CVS on one synced timeline.
+- **Real time:** 30 fps live analysis with per-frame risk on a laptop GPU.
+- **Privacy-friendly:** runs locally; the optional AI explanation sends only numbers, never video.
+- **Ordinary hardware:** NVIDIA, AMD/Intel (DirectML) or CPU; models cached, analyses start in ~0.3 s and stop instantly.
+- **Builds its own validation data:** reviewer flags capture expert agreement and corrections.
+
+</details>
+
+---
+
+## 📊 Results on held-out data
+
+All numbers are measured on patients or clips the model **never saw during training**.
 
 | Component | Result |
 |---|---|
@@ -92,247 +293,135 @@ All numbers are measured on patients or clips that the model **never saw during 
 | Tissue segmentation (gallbladder surgery) | mean Dice **0.735**; liver 0.843, gallbladder 0.842, fat 0.933 |
 | Tissue model for other surgeries (opt-in) | Dresden Surgical Anatomy test Dice 0.38 → **0.85**; false "liver" on an appendicectomy roughly halved |
 | L-hook tip, leakage-free test | DeepLabCut median **6.5 px**, 35/35 found, 91 % within 20 px |
-| Grasper tip (geometry) | median ≈ 67 px on 5 videos — rough; needs more human labels |
+| Grasper tip (geometry) | median ≈ 67 px on 5 videos (rough; needs more human labels) |
 | Bleeding detection | F1 **0.937**, AUROC 0.942 |
 | Critical View of Safety | mAP **0.539** on 40 unseen videos |
-| Speed | ~5–6 frames/s on an AMD RX 6800M (DirectML) — not real time |
+| Speed | recorded video ~5–6 fps (all models, every frame); live **30 fps** per frame |
 
-Details and history: [docs/TECHNICAL_GUIDE.md](docs/TECHNICAL_GUIDE.md) · [docs/PROJECT_STATUS_REPORT.md](docs/PROJECT_STATUS_REPORT.md).
+<details>
+<summary><b>How we evaluated</b></summary>
 
-## How it works
+<br/>
 
-```mermaid
-flowchart LR
-    V[Video] --> F[Frames]
-    F --> I[Instrument<br/>segmentation]
-    F --> T[Tissue<br/>segmentation]
-    F --> B[Bleeding<br/>detector]
-    F --> C[CVS<br/>classifier]
-    I --> K[Tips<br/>DLC + geometry]
-    K --> M[Motion<br/>tracking]
-    K --> P[Proximity]
-    T --> P
-    M --> R[Risk score<br/>+ explanation]
-    P --> R
-    R --> O[Annotated video · CSV · summary]
-    B --> O
-    C --> O
-    O --> W[Web app]
-    O --> L[gpt-oss<br/>explanation]
-    L --> W
-```
+- **Patient-level splits:** train, validation and test are split by video/patient, never by frame.
+- **Held-out only:** no result here comes from training data.
+- **Leakage audit:** an early DeepLabCut result was optimistic because its starting model had seen the test videos; the
+  leakage-free re-run (6.5 px) is in [docs/DLC_CLEAN_EVALUATION.md](docs/DLC_CLEAN_EVALUATION.md).
+- **Honest negatives:** approaches that did not hold up were rejected and documented, not shipped.
+- **Not yet validated:** the dissection zones are a rule-based approximation and have not been compared with expert
+  annotations ([docs/DISSECTION_ZONES.md](docs/DISSECTION_ZONES.md)).
 
-## Pipeline in detail
+</details>
 
-### 1. Instrument segmentation
-A U-Net (ResNet encoder, 256 × 448 input) segments the **grasper** and **L-hook** in every frame. It was trained on
-11 CholecSeg8k videos with a video-level split, so the test patients are completely unseen.
+---
 
-### 2. Instrument tips — *hybrid* keypoints
-- **L-hook:** a **DeepLabCut** model trained on human tip clicks. The first time a video is analysed, DLC runs over
-  it once (cancellable) and the result is cached.
-- **Grasper:** a geometric rule on the instrument mask — follow the instrument from where it enters the view
-  (geodesic distance inside the mask) to the jaw hinge, 90 px back from the far end.
-- Tips with low confidence are flagged and shown hatched in the timeline instead of being silently trusted.
-
-### 3. Motion
-Tips are smoothed (EMA) and tracked over time: speed, direction, acceleration and abrupt trajectory changes, with an
-estimate of camera motion so that a moving camera is not mistaken for a moving instrument.
-
-### 4. Tissue segmentation and reliability
-A second U-Net labels 12 tissue classes. For every class, PRISM-Endo knows how it performed on unseen patients and
-marks it **tested**, **barely tested** or **not tested** — e.g. the cystic duct is too rare in the test set to be
-trusted. A second, opt-in model fine-tuned on the Dresden Surgical Anatomy Dataset handles non-gallbladder
-operations (**Surgery type → Other**).
-
-### 5. Proximity
-For each tip, the distance (distance transform) to the selected target tissues. An approximate millimetre value is
-estimated from the known 5 mm instrument-shaft width and always labelled *approximate*.
-
-### 6. Risk score
-A transparent, rule-based score built from four parts, smoothed over time:
-
-| Part | Weight | Meaning |
-|---|---|---|
-| Proximity | 0.50 | how close a tip is to a target tissue |
-| Approach | 0.20 | how fast it is moving **towards** that tissue |
-| Speed | 0.15 | how fast the tip moves overall |
-| Abrupt change | 0.15 | sudden changes of direction or acceleration |
-
-**Pre-contact early warning:** for every tip, PRISM-Endo predicts the **time to contact** with the nearest target
-tissue (distance ÷ speed towards it). When contact is predicted within **1 s** (configurable), the video shows a
-pulsing red border with *"CONTACT WARNING — grasper tip → liver in 0.6 s"*, and the moment appears as an event,
-a milestone and a timeline track.
-
-Categories: **Minimal** < 0.25 ≤ **Low** < 0.5 ≤ **Medium** < 0.75 ≤ **High**. Every frame carries the reason, e.g.
-*"Grasper tip: Medium — tip 5 px from liver (+0.46); moving towards liver at 184 px/s (+0.14)"*.
-
-### 7. Safety models
-- **Bleeding:** U-Net trained on SurgBlood (split by clip), sampled every 0.5 s, outlined on the video.
-- **Critical View of Safety:** ResNet-50 trained on Endoscapes-CVS201 surgeon labels, estimating each of the
-  three criteria (C1–C3) every second.
-
-### 8. Live capture (real time)
-OpenCV opens a **webcam or capture card** (`camera:0`) or a **stream URL** (`rtsp://`, `http://`). Frames are read
-as they arrive — stale buffered frames are dropped so the analysis stays in sync with the camera — and each annotated
-frame is streamed to the browser as a live view, with the current risk and any contact warning. **Finish & save**
-keeps the session as a normal analysis; **Discard** throws it away.
-
-**30 fps live analysis — keyframes + tracking.** Running every model on every frame is too slow for live video, so
-live mode splits the work:
-
-| Layer | Rate (laptop GPU, measured) | What runs |
-|---|---|---|
-| **Per-frame** | **30 fps** (camera rate) | Lucas-Kanade optical-flow tip tracking, distance to tissue from cached distance maps, speed, approach speed, **time to contact**, contact warning, drawing |
-| **Keyframes** | ~4–6 fps | full models: instrument + tissue segmentation, tips, bleeding, CVS — re-anchor the tracked tips |
-
-Frames are captured on a dedicated thread (newest frame always used, downscaled to 854 px), drawing and JPEG encoding
-run on a separate display thread, and every per-frame result is logged to `live_fast.csv`. Measured with a paced
-720p camera feed: 29–30 fps on a 30 fps camera and 30.0 fps sustained on a 60 fps camera.
-
-### 9. AI explanation (gpt-oss)
-A compact, **numbers-only** summary of the analysis (risk timeline, events, bleeding, CVS, instruments, settings —
-never video or frames) is sent to **gpt-oss** on an OpenAI-compatible API (Groq). It writes:
-*What happened in the video · Key moments · Risk and safety · How far to trust this*. The prompt forbids inventing
-anything that is not in the data and forbids medical advice. Explanations are cached per analysis and can be
-**read aloud** with the browser's built-in speech engine.
-
-## The web app
-
-A calm, review-focused interface (React · Vite · Tailwind · FastAPI) with a landing page and loading screen:
-
-- **Analyse** — upload or pick a video, choose surgery type, tip source and the tissues to measure (all by default);
-  live progress with the current phase and an instant **Stop** that never damages earlier results.
-- **Review** — synced annotated + original video, KPI cards, a **stacked timeline** (risk, bleeding, CVS,
-  instruments, proximity) with drag-to-zoom, milestones and thumbnails, **"Why this risk"**, event list, risk chart
-  coloured by risk level, frame inspector, analysis settings.
-- **Explain** — the **AI explanation** sits in a resizable right-hand panel, with **Listen** (voice, speed,
-  sentence highlighting).
-- **Annotate** — reviewer flags (*agree · AI wrong · important*) saved with each analysis, building a human-labelled
-  set for future validation.
-- **Compare · export · print** — compare two analyses side by side, download video / CSV / JSON, print a summary.
-- **Accessible** — full keyboard control (`Space`, `D/F`, `J/K`, `1/2/3`, `T`, `?`), light and dark themes,
-  WCAG 2 AA contrast (checked automatically), reduced-motion support, resizable side panels.
-
-Design rules: [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
-
-## Outputs
+## 📦 Outputs
 
 Each analysis is saved in `outputs/runs/<video>/`:
 
 | File | Contents |
 |---|---|
-| `annotated.mp4` / `annotated_h264.mp4` | video with instruments, tips, tissue outlines, risk banner, legend |
-| `results.csv` | one row per frame: instruments, tip positions and status, motion, proximity per target, risk score, category and explanation, bleeding, CVS, approximate mm |
+| `annotated.mp4` / `annotated_h264.mp4` | video with instruments, tips, tissue outlines, zones, risk banner, warnings, legend |
+| `results.csv` | one row per frame: instruments, tips, motion, proximity per target, time to contact, risk and reason, zones, bleeding, CVS |
 | `summary.json` | settings, models used, per-category counts, run time, warnings |
+| `live_fast.csv` | live sessions only: every tracked frame with distance, speed, time to contact and risk |
 | `review_flags.json` | reviewer flags from the web app |
 | `explanation.json` | cached gpt-oss explanation |
 
-## How we evaluated
+---
 
-- **Patient-level splits.** Train, validation and test sets are split **by video/patient**, never by frame, so a test
-  patient is never seen in training.
-- **Held-out only.** No result in this README comes from training data.
-- **Leakage audit.** An early DeepLabCut result turned out to be optimistic because its starting model had seen the
-  test videos; a fully leakage-free re-run (6.5 px) is documented in
-  [docs/DLC_CLEAN_EVALUATION.md](docs/DLC_CLEAN_EVALUATION.md).
-- **Honest negatives.** Approaches that did not hold up on held-out data were rejected and documented rather than
-  shipped (e.g. a tissue model that improved other surgeries but lost accuracy on gallbladder surgery became an
-  opt-in instead of the default).
-- **Software quality.** 120 unit tests and 21 end-to-end browser tests (every control, light/dark, four screen sizes,
-  accessibility scan) — see [QA_REPORT.md](QA_REPORT.md).
+## 📚 Documentation
 
-## Quick start
+| Document | What's inside |
+|---|---|
+| 📋 [**PRD.md**](PRD.md) | Goals, users, scope, requirements, success metrics |
+| 🏗️ [**ARCHITECTURE.md**](ARCHITECTURE.md) | Components, data flow, API, job lifecycle, performance |
+| 🤖 [**AGENTS.md**](AGENTS.md) | Rules and conventions for coding tools working on this repo |
+| 🎨 [**DESIGN_SYSTEM.md**](DESIGN_SYSTEM.md) | Web app tokens, typography, components, accessibility |
+| ✅ [**QA_REPORT.md**](QA_REPORT.md) | Test strategy, coverage, defects found and fixed |
+| 🔍 [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) | Gaps in surgical risk prediction and how PRISM-Endo addresses them |
+| 🟩 [docs/DISSECTION_ZONES.md](docs/DISSECTION_ZONES.md) | Go / No-Go zones: literature, rules, limits |
+| 🛠️ [docs/TECHNICAL_GUIDE.md](docs/TECHNICAL_GUIDE.md) | Every command, training run and measurement |
+| 🎯 [docs/DLC_CLEAN_EVALUATION.md](docs/DLC_CLEAN_EVALUATION.md) | Leakage-free DeepLabCut evaluation |
+| 🗃️ [docs/DATASETS.md](docs/DATASETS.md) | Data layout and splits |
+| 🩺 [docs/CLINICAL_REVIEW_PACKAGE.md](docs/CLINICAL_REVIEW_PACKAGE.md) | Package for surgeon review |
 
-> Windows · Python 3.11 · Node 20+. Trained weights and datasets are **not** in this repository (see
-> [Datasets and licences](#datasets-and-licences)); the pipeline reports missing models instead of failing.
+---
+
+## 🔌 API
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/meta` | Surgery types, tissues and their reliability, inputs, defaults |
+| `GET` | `/api/runs` · `/api/runs/{name}` | List analyses · one analysis (summary + per-frame data) |
+| `GET` | `/api/runs/{name}/video/{kind}` | Annotated or original video (H.264, range requests) |
+| `GET` | `/api/runs/{name}/frame/{idx}` | One annotated frame as an image |
+| `GET` | `/api/runs/{name}/file/{kind}` | Download CSV / JSON / video |
+| `GET` · `PUT` | `/api/runs/{name}/flags` | Reviewer flags |
+| `POST` | `/api/runs/{name}/explain` | gpt-oss explanation (cached) · `GET /api/llm/status` |
+| `POST` | `/api/upload` | Upload a video |
+| `POST` | `/api/run` | Start an analysis (file, camera or stream) |
+| `GET` | `/api/jobs/{id}` · `/api/active` | Job progress, phase, live fps, risk, warning |
+| `POST` | `/api/jobs/{id}/cancel` · `/finish` | Stop and discard · finish and save a live session |
+| `GET` | `/api/cameras` | Find connected cameras |
+| `GET` | `/api/live/{id}.mjpg` | Live annotated view (MJPEG) |
+| `GET` | `/api/live/{id}/data?since=N` | Live per-frame series, events and status after frame N |
+
+---
+
+## 🧪 Tests
 
 ```powershell
-# 1. Python environment (CPU/CUDA); use requirements-directml.txt in .venv-dml for AMD/Intel GPUs
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-
-# 2. Analyse a video from the command line
-.venv\Scripts\python run_pipeline.py --input path\to\video.mp4 --out outputs\runs\my_video
-
-# 3. Build and start the web app
-cd web; npm install; npm run build; cd ..
-.venv\Scripts\python -m uvicorn src.api.server:app --port 8510
-# open http://localhost:8510
+.venv\Scripts\python -m pytest -q     # 128 unit tests: pipeline, risk, tracking, live, zones, API
+cd web; npm run test:e2e               # 21 browser tests: every control, light/dark, 4 sizes, axe accessibility
 ```
 
-**Optional AI explanation:** copy `.env.example` to `.env` and set `GROQ_API_KEY` (free at console.groq.com).
-Only analysis numbers are sent; `.env` is never committed.
+Details in [QA_REPORT.md](QA_REPORT.md).
 
-**Tests:**
+---
 
-```powershell
-.venv\Scripts\python -m pytest -q        # unit tests
-cd web; npm run test:e2e                  # browser tests (server running)
-```
+## 🗂️ Project layout
 
-## Tech stack and performance
-
-| Layer | Technology |
-|---|---|
-| Models | PyTorch, segmentation-models-pytorch (U-Net), torchvision (ResNet-50), DeepLabCut 3 |
-| GPU | CUDA, or AMD/Intel via DirectML on Windows; CPU fallback with optional ONNX Runtime |
-| Video | OpenCV, ffmpeg (H.264 for browsers) |
-| Server | FastAPI + Uvicorn |
-| Web | React 18, TypeScript, Vite, Tailwind CSS 4, Geist |
-| AI text | gpt-oss (OpenAI open-weight) via Groq's OpenAI-compatible API; browser Web Speech API for read-aloud |
-| Tests | pytest, Playwright, axe-core |
-
-| Measure | Value (AMD RX 6800M laptop GPU) |
-|---|---|
-| Recorded-video analysis (all models, every frame) | ~5–6 frames/s |
-| Live analysis (per-frame tracking + keyframes) | **30 fps** per frame, keyframes ~4–6 fps |
-| Start an analysis after a settings change | ~0.3 s (models cached) |
-| Stop an analysis | ~0.2 s |
-| AI explanation | ~2 s |
-
-## Project structure
+<details>
+<summary><b>Expand the tree</b></summary>
 
 ```
-PRISM-Endo/
-├── src/
-│   ├── pipeline/      end-to-end pipeline, overlay drawing
-│   ├── segmentation/  U-Net training, prediction, temporal smoothing
-│   ├── tracking/      DeepLabCut / geometry / hybrid tip sources
-│   ├── motion/        tip kinematics, camera motion
-│   ├── tissue/        tissue segmenter + per-class reliability
-│   ├── proximity/     tip-to-tissue distance, approximate mm scale
-│   ├── risk/          rule-based (and learned) risk scoring
-│   ├── safety/        bleeding detector, Critical View of Safety
-│   ├── api/           FastAPI server and gpt-oss explanation
-│   └── ui/            training dashboard (+ legacy Streamlit app)
-├── web/               React web app + Playwright tests
-├── configs/           pipeline and training configs
-├── scripts/           training, evaluation, data and DLC tooling
-├── tests/             unit tests (pytest)
-├── docs/              technical guide, evaluations, reports
-└── status/            project status board
+src/
+  pipeline/      end-to-end pipeline, overlay drawing
+  segmentation/  U-Net training, prediction, temporal smoothing
+  tracking/      DeepLabCut / geometry / hybrid tip sources
+  motion/        tip kinematics, camera motion
+  tissue/        tissue segmenter + per-class reliability
+  proximity/     tip-to-tissue distance, approximate mm scale
+  risk/          rule-based (and learned) risk scoring
+  safety/        bleeding, Critical View of Safety, dissection zones
+  api/           FastAPI server, live tracker (live_fast.py), gpt-oss explanation
+  ui/            training dashboard (+ legacy Streamlit app)
+web/             React app (src/components, src/lib) + Playwright tests
+configs/         pipeline.yaml and training configs
+scripts/         training, evaluation, data and DLC tooling
+tests/           pytest suite
+docs/            technical guide, evaluations, reports
 ```
 
-## Documentation
+</details>
 
-| Document | What it covers |
-|---|---|
-| [PRD.md](PRD.md) | Goals, users, scope, requirements, success metrics |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Components, data flow, API, job lifecycle, performance |
-| [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) | Web app tokens, typography, components, accessibility |
-| [QA_REPORT.md](QA_REPORT.md) | Test strategy, coverage, defects found and fixed |
-| [AGENTS.md](AGENTS.md) | Rules for automated coding tools working on this repo |
-| [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) | Gaps in surgical risk prediction and how PRISM-Endo addresses them |
-| [docs/TECHNICAL_GUIDE.md](docs/TECHNICAL_GUIDE.md) | Every command, training run and measurement |
-| [docs/DLC_CLEAN_EVALUATION.md](docs/DLC_CLEAN_EVALUATION.md) | Leakage-free DeepLabCut evaluation |
-| [docs/DATASETS.md](docs/DATASETS.md) | Data layout and splits |
-| [docs/CLINICAL_REVIEW_PACKAGE.md](docs/CLINICAL_REVIEW_PACKAGE.md) | Package for surgeon review |
+<details>
+<summary><b>Five files to read first</b></summary>
 
-## Datasets and licences
+1. [`src/pipeline/pipeline.py`](src/pipeline/pipeline.py): the whole pipeline, frame by frame
+2. [`src/risk/rule_based.py`](src/risk/rule_based.py): the risk maths
+3. [`src/api/live_fast.py`](src/api/live_fast.py): 30 fps live tracking, per-frame risk and live data
+4. [`src/safety/dissection_zones.py`](src/safety/dissection_zones.py): Go / No-Go zones
+5. [`web/src/App.tsx`](web/src/App.tsx): the web app shell
 
-The **code** is MIT-licensed. **Datasets and trained weights are not included** and keep their own licences —
-download them from the original sources:
+</details>
+
+---
+
+## 🗃️ Datasets and licences
+
+The **code** is MIT-licensed. **Datasets and trained weights are not included** and keep their own licences.
 
 | Dataset | Used for | Licence |
 |---|---|---|
@@ -344,56 +433,68 @@ download them from the original sources:
 
 Models trained on non-commercial (NC) data inherit those restrictions.
 
-### Suggested dissection zones
+<details>
+<summary><b>Tech stack and performance</b></summary>
 
-On gallbladder video, a green **Go** zone (fibro-fatty tissue close to the gallbladder) and a red **No-Go** zone (danger structures and deep tissue where the bile duct runs) are overlaid, offline and live, following GoNoGoNet and SAGES safe-cholecystectomy guidance. It is a rule-based estimate; see [docs/DISSECTION_ZONES.md](docs/DISSECTION_ZONES.md).
+<br/>
 
-## Advantages
+| Layer | Technology |
+|---|---|
+| Models | PyTorch, segmentation-models-pytorch (U-Net), torchvision (ResNet-50), DeepLabCut 3 |
+| GPU | CUDA, or AMD/Intel via DirectML on Windows; CPU fallback |
+| Video | OpenCV (capture, optical flow), ffmpeg (H.264 for browsers) |
+| Server | FastAPI + Uvicorn |
+| Web | React 18, TypeScript, Vite, Tailwind CSS 4, Geist |
+| AI text | gpt-oss via Groq's OpenAI-compatible API; browser Web Speech API for read-aloud |
+| Tests | pytest, Playwright, axe-core |
 
-- **Explainable, not a black box** — every risk value comes with a written reason (which tip, which tissue, how
-  close, how fast), and the AI explanation turns a whole analysis into a readable report.
-- **Honest about reliability** — each tissue is marked tested / not tested on unseen patients and low-confidence
-  tips are shown as such, so reviewers know what to trust.
-- **Evaluated on unseen patients** — patient-level splits and a leakage audit; every reported number is held-out.
-- **Many signals in one view** — instruments, tips, motion, tissue proximity, bleeding and Critical View of Safety
-  in a single synced timeline, instead of separate tools.
-- **Fast to review** — jump to events, milestones and risk peaks in one click or key press; compare analyses side by
-  side; print a one-page summary.
-- **Privacy-friendly** — runs on a local laptop GPU; the optional AI explanation sends only numbers, never video.
-- **Runs on ordinary hardware** — works on NVIDIA, AMD/Intel (DirectML) or CPU; models are cached and analyses start
-  in about 0.3 s and stop instantly.
-- **Builds its own validation data** — reviewer flags capture expert agreement and corrections for future training.
-- **Accessible and polished** — keyboard control, light and dark themes, WCAG 2 AA contrast, read-aloud.
-- **Open and extensible** — MIT-licensed code, modular pipeline, YAML configs, 120 unit and 21 browser tests.
+| Measure | Value (AMD RX 6800M laptop GPU) |
+|---|---|
+| Recorded-video analysis (all models, every frame) | ~5–6 frames/s |
+| Live analysis | **30 fps** per frame, keyframes ~4–6 fps |
+| Start after a settings change | ~0.3 s (models cached) |
+| Stop an analysis | ~0.2 s |
+| AI explanation | ~2 s |
 
-## Roadmap
+</details>
+
+<details>
+<summary><b>Roadmap</b></summary>
+
+<br/>
 
 - [ ] Surgeon review and clinical sign-off
+- [ ] Expert-labelled Go / No-Go zones and a learned model for them
 - [ ] Learned grasper-tip model from more human labels
-- [ ] Expert-labelled safe / unsafe dissection zones and a validated model for them
 - [ ] Learned injury-risk model from expert event labels
 - [ ] Camera calibration for true millimetres
-- [ ] Full video-rate live processing (model optimisation, ONNX / TensorRT)
+- [ ] Full models on every live frame (ONNX / TensorRT)
 - [ ] Hosted deployment with a permanent URL
 
-## Acknowledgements
+</details>
 
-PRISM-Endo builds on public research datasets and open-source tools: **CholecSeg8k**, the **Dresden Surgical
-Anatomy Dataset**, **Endoscapes-CVS201** (CAMMA), **SurgBlood**, **EndoVis**, **DeepLabCut**,
-**segmentation-models-pytorch**, **PyTorch**, **gpt-oss** and **Groq**. Thanks to their authors and annotators.
+<details>
+<summary><b>Acknowledgements and citation</b></summary>
 
-## Citation
+<br/>
+
+PRISM-Endo builds on **CholecSeg8k**, the **Dresden Surgical Anatomy Dataset**, **Endoscapes-CVS201** (CAMMA),
+**SurgBlood**, **EndoVis**, **DeepLabCut**, **segmentation-models-pytorch**, **PyTorch**, **OpenCV**, **gpt-oss** and
+**Groq**, and on the GoNoGoNet work of Madani et al. and SAGES safe-cholecystectomy guidance. Thanks to their authors
+and annotators.
 
 ```bibtex
 @software{prism_endo_2026,
   title  = {PRISM-Endo: Predictive Risk Intelligence System for Endoscopic Surgery},
   year   = {2026},
-  url    = {https://github.com/SeptuaJananiB/Prism_Endo},
-  note   = {Research software, not clinically validated}
+  url    = {https://github.com/SeptuaJananiB/Prism_Endo}
 }
 ```
 
-## License
+</details>
 
-Code released under the [MIT License](LICENSE). Datasets and trained weights are excluded and remain under their own
-licences.
+---
+
+<div align="center">
+<sub>Measured geometry, transparent rules, honest numbers. Released under the <a href="LICENSE">MIT License</a>.</sub>
+</div>
