@@ -123,7 +123,10 @@ export function LiveInsights({ jobId }: { jobId: string }) {
             return (
               <div key={n} className={`rounded-lg border p-3 ${warn ? "border-err bg-[var(--err-bg)]" : "border-line"}`}>
                 <div className="flex items-center justify-between text-[13px] font-medium"><span>{tipName(n)}</span>
-                  <span className="text-xs text-muted">{s ? `near ${nice(s.target) || "–"}` : "not tracked"}</span></div>
+                  <span className="flex items-center gap-1.5 text-xs text-muted">
+                    {s?.zone === "no_go" && <span className="chip chip-err h-5 px-1.5 text-[11px]">No-Go zone</span>}
+                    {s?.zone === "go" && <span className="chip h-5 px-1.5 text-[11px]" style={{ color: "var(--risk-minimal)", background: "var(--surface-2)" }}>Go zone</span>}
+                    {s ? `near ${nice(s.target) || "–"}` : "not tracked"}</span></div>
                 <dl className="m-0 mt-2 grid grid-cols-3 gap-2 text-xs">
                   <div><dt className="text-muted">Distance</dt><dd className="m-0 text-[15px] font-semibold tabular">{fmt(s?.dist)} <span className="text-xs font-normal text-muted">px</span></dd></div>
                   <div><dt className="text-muted">Speed</dt><dd className="m-0 text-[15px] font-semibold tabular">{fmt(s?.speed)} <span className="text-xs font-normal text-muted">px/s</span></dd></div>
@@ -168,6 +171,9 @@ export function LiveInsights({ jobId }: { jobId: string }) {
           <div className="col-span-2"><dt className="text-muted">Critical View of Safety</dt><dd className="m-0 mt-1 text-[13px]">
             {info.cvs ? <span className="font-semibold">Reached</span> : "Not reached"}
             {info.cvs_c?.some((v) => v != null) && <span className="text-muted tabular"> · C1 {fmt(info.cvs_c[0], 2)} C2 {fmt(info.cvs_c[1], 2)} C3 {fmt(info.cvs_c[2], 2)}</span>}</dd></div>
+          <div className="col-span-2"><dt className="text-muted">Suggested dissection zones</dt><dd className="m-0 mt-1 text-[13px]">
+            {info.zones ? <><span style={{ color: "var(--risk-minimal)" }}>■</span> Go {fmt((info.go_frac ?? 0) * 100, 1)}% · <span className="text-err">■</span> No-Go {fmt((info.nogo_frac ?? 0) * 100, 1)}%
+              <span className="text-muted"> · estimate</span></> : <span className="text-muted">Shown when the gallbladder is visible (gallbladder model)</span>}</dd></div>
           {info.explanation && <div className="col-span-2"><dt className="text-muted">Why</dt><dd className="m-0 mt-1 line-clamp-3 text-[13px]">{tipName(String(info.explanation))}</dd></div>}
         </dl>
         <h3 className="m-0 px-4 pt-3 text-[13px] font-semibold">Events <span className="font-normal text-muted tabular">· {events.length}</span></h3>
@@ -176,7 +182,7 @@ export function LiveInsights({ jobId }: { jobId: string }) {
           {events.map((e, k) => (
             <li key={`${e.t}-${k}`} className="flex items-baseline gap-2 rounded-md px-2 py-1.5 text-[13px]">
               <span className="w-12 shrink-0 text-xs text-muted tabular">{e.t.toFixed(1)} s</span>
-              <span className={e.kind === "Contact warning" || e.kind === "Bleeding" ? "text-err" : ""}>{e.label}</span>
+              <span className={e.kind === "Contact warning" || e.kind === "Bleeding" || e.kind === "No-Go zone" ? "text-err" : ""}>{e.label}</span>
             </li>
           ))}
         </ol>

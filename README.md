@@ -344,6 +344,10 @@ download them from the original sources:
 
 Models trained on non-commercial (NC) data inherit those restrictions.
 
+### Suggested dissection zones
+
+On gallbladder video, a green **Go** zone (fibro-fatty tissue close to the gallbladder) and a red **No-Go** zone (danger structures and deep tissue where the bile duct runs) are overlaid, offline and live, following GoNoGoNet and SAGES safe-cholecystectomy guidance. It is a rule-based estimate; see [docs/DISSECTION_ZONES.md](docs/DISSECTION_ZONES.md).
+
 ## Advantages
 
 - **Explainable, not a black box** — every risk value comes with a written reason (which tip, which tissue, how

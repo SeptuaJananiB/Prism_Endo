@@ -130,6 +130,12 @@ class PrismPipeline:
         self.on_frame: Callable | None = None                 # live view: called with (annotated_bgr, row, raw_bgr)
         self.on_capture: Callable | None = None               # live view: every captured camera frame (display rate)
         wcfg = (cfg.get("risk", {}) or {})
+        # suggested Go / No-Go dissection zones (gallbladder model only; rule-based estimate, see dissection_zones.py)
+        self.zone_cfg = dict((cfg.get("safety", {}) or {}).get("dissection_zones", {}) or {})
+        if "dsad" in str((cfg.get("tissue", {}) or {}).get("checkpoint", "")):
+            self.zone_cfg["enabled"] = False
+        self.zones = None
+        self._zones_src = None
         self.ttc_warn_s = float(wcfg.get("pre_contact_warning_s", 1.0))      # warn when contact is predicted within this
         self.ttc_min_speed = float(wcfg.get("pre_contact_min_approach_px_s", 20.0))
         self.on_phase: Callable[[str], None] = lambda _p: None  # set by the UI server: what is happening now
@@ -290,6 +296,7 @@ class PrismPipeline:
         timing = {"instrument": [], "keypoints": [], "tissue": [], "post": [], "total": []}
         cat_counts: dict[str, int] = {}
         tissue_labels = None
+        self.zones, self._zones_src = None, None
         total = len(frames)
         t_start = time.perf_counter()
         try:
@@ -395,6 +402,22 @@ class PrismPipeline:
                 row["pre_contact_detail"] = ("" if not row["pre_contact_warning"] else
                                              f"{_who} touching {_tgt}" if _best[0] <= 0.05 else
                                              f"{_who} -> {_tgt} in {_best[0]:.1f} s")
+                if self.zone_cfg.get("enabled", True) and self.tissue.available:
+                    from src.safety import dissection_zones as dz
+
+                    if self._zones_src is not tissue_labels:  # recompute only when the tissue mask changed
+                        self.zones = dz.compute(tissue_labels, self.tissue.class_names, self.zone_cfg)
+                        self._zones_src = tissue_labels
+                    z = self.zones
+                    row["dissection_zones_available"] = z.available
+                    row["go_zone_frac"] = round(float(z.go.mean()), 4) if z.available else None
+                    row["nogo_zone_frac"] = round(float(z.nogo.mean()), 4) if z.available else None
+                    for n in kp_names:
+                        x, y = row.get(f"{n}_x"), row.get(f"{n}_y")
+                        ok = x is not None and y is not None and x == x and y == y
+                        row[f"{n}_zone"] = z.zone_at(x, y) if ok else ""
+                    _in = [n for n in kp_names if row.get(f"{n}_zone") == "no_go"]
+                    row["tip_in_nogo_zone"] = bool(_in)
                 cat_counts[row["risk_category"]] = cat_counts.get(row["risk_category"], 0) + 1
 
                 if writer is not None:
@@ -413,6 +436,10 @@ class PrismPipeline:
                                      status_lines=status, alpha=ocfg.get("mask_alpha", 0.4),
                                      kp_class=slot_classes(self.specs),
                                      target_marks=target_marks)
+                    if self.zones is not None and self.zones.available:
+                        from src.safety.dissection_zones import draw as draw_zones
+
+                        vis = draw_zones(vis, self.zones)
                     if self.bleeding is not None:
                         from src.safety.bleeding import draw_bleeding
 

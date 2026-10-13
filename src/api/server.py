@@ -350,7 +350,7 @@ def _work(job_id: str, req: RunRequest):
             def on_frame(vis, row, raw):
                 # keyframe: full analysis result re-anchors the per-frame tracker
                 inst_l, tis_l, kp_names = getattr(pipe, "last_labels", (None, None, []))
-                fast.keyframe(raw, row, inst_l, tis_l, pipe.tissue.class_names, pipe.targets, kp_names)
+                fast.keyframe(raw, row, inst_l, tis_l, pipe.tissue.class_names, pipe.targets, kp_names, pipe.zones)
                 now = time.perf_counter()
                 st["an_fps"] = 0.8 * st["an_fps"] + 0.2 / max(1e-3, now - st["t_an"])
                 st["t_an"] = now

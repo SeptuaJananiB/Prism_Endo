@@ -110,6 +110,15 @@ risk:
   use_camera_compensated_speed: false   # true: speed term uses motion relative to the scene (not validated)
 
 safety:
+  # Suggested dissection zones (cholecystectomy model only): green Go = fibro-fatty tissue close to the gallbladder,
+  # red No-Go = danger structures + margin and deep tissue far from the gallbladder. Rule-based approximation of
+  # GoNoGoNet (Madani 2022) / SAGES safe cholecystectomy; not compared with expert annotations. Fractions of the diagonal.
+  dissection_zones:
+    enabled: true
+    go_band_frac: 0.06
+    deep_frac: 0.16
+    danger_margin_frac: 0.03
+    min_gallbladder_frac: 0.01
   # Bleeding detector: U-Net ResNet-18 on SurgBlood (split by clip); held-out detection F1 0.937, AUROC 0.942.
   # Columns bleeding_frac / bleeding_detected; thin dark-red outline in the overlay. Not clinically validated.
   bleeding:

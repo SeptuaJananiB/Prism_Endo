@@ -35,6 +35,7 @@ class FastLive:
                    "accel_ref_frac_per_s2": 12.0, "weights": {"proximity": 0.5, "approach": 0.2, "speed": 0.15, "abrupt": 0.15},
                    "smoothing_alpha": 0.4, "thresholds": {"low": 0.25, "medium": 0.5, "high": 0.75}, **(risk_cfg or {})}
         self.diag = None
+        self.zones = None                               # suggested Go / No-Go dissection zones (latest keyframe)
         self.score: float | None = None
         self.why = ""
         self.tips: dict[str, np.ndarray] = {}          # name -> (x, y) float32
@@ -58,12 +59,13 @@ class FastLive:
         self._last_sample = 0.0
         self._warn_t: float | None = None
         self._risk_t: dict[str, float] = {}
+        self._nogo_t: dict[str, float] = {}
         self._prev = {"warning": "", "risk": None, "bleeding": False, "cvs": False}
         self.lock = threading.Lock()  # keyframes come from the analysis thread, frames from the capture thread
 
     # -- keyframe from the full pipeline ---------------------------------------------------------------------------
     def keyframe(self, raw: np.ndarray, row: dict, inst_labels, tissue_labels, tissue_names: list[str],
-                 targets: list[str], kp_names: list[str]) -> None:
+                 targets: list[str], kp_names: list[str], zones=None) -> None:
         """Full-analysis result. The heavy part (colour layer, distance maps) is built WITHOUT the lock, so the
         capture thread is never blocked; only the final swap is locked."""
         h, w = raw.shape[:2]
@@ -96,6 +98,7 @@ class FastLive:
         with self.lock:
             self.diag = float(np.hypot(h, w))  # swap in (re-anchors the tracked tips to the keyframe detections)
             self.overlay, self.overlay_mask = layer, mask
+            self.zones = zones if zones is not None and zones.available and zones.go.shape == (h, w) else None
             self.dist_maps, self.inside_maps = dm, im
             self.tips = tips
             self.prev_gray = gray
@@ -104,7 +107,9 @@ class FastLive:
             num = lambda v: None if v is None or v != v else float(v)
             self.info = {"risk_score": num(row.get("risk_score")), "bleeding": bool(row.get("bleeding_detected")),
                          "cvs": bool(row.get("cvs_achieved")), "explanation": row.get("risk_explanation") or "",
-                         "cvs_c": [num(row.get(f"cvs_c{i}")) for i in (1, 2, 3)]}
+                         "cvs_c": [num(row.get(f"cvs_c{i}")) for i in (1, 2, 3)],
+                         "zones": bool(zones is not None and zones.available),
+                         "go_frac": num(row.get("go_zone_frac")), "nogo_frac": num(row.get("nogo_zone_frac"))}
 
     # -- every camera frame ----------------------------------------------------------------------------------------
     def frame(self, img: np.ndarray) -> dict:
@@ -149,7 +154,8 @@ class FastLive:
                 s["speed"] = 0.7 * prev_spd + 0.3 * spd
                 acc = abs(s["speed"] - prev_spd) / dt
                 s["accel"] = 0.7 * s.get("accel", acc) + 0.3 * acc
-            s = {**(s or {}), "p": p.copy(), "target": near[0] if near else None, "dist": near[1] if near else None}
+            s = {**(s or {}), "p": p.copy(), "target": near[0] if near else None, "dist": near[1] if near else None,
+                 "zone": self.zones.zone_at(x, y) if self.zones is not None else ""}
             self.state[n] = s
             if near:
                 a = s.get("approach", 0.0)
@@ -235,6 +241,11 @@ class FastLive:
             self._event(t, "Bleeding", "Bleeding flagged")
         if self.info.get("cvs") and not p["cvs"]:
             self._event(t, "CVS", "Critical View of Safety reached")
+        nogo = sorted(n for n, st in self.state.items() if st.get("zone") == "no_go")
+        for n in nogo:
+            if t - self._nogo_t.get(n, -9.0) > 2.0:
+                self._event(t, "No-Go zone", f"{n.replace('_tip', ' tip').replace('_', ' ')} in No-Go zone")
+            self._nogo_t[n] = t
         self._prev = {"warning": warning, "risk": self.risk, "bleeding": bool(self.info.get("bleeding")),
                       "cvs": bool(self.info.get("cvs"))}
         self._last_sample = now
@@ -243,7 +254,8 @@ class FastLive:
         for n, s in self.state.items():
             d, a = s.get("dist"), s.get("approach", 0.0)
             ttc = None if d is None else (0.0 if d <= 0 else (d / a if a > self.min_approach else None))
-            tips[n] = {"dist": r(d), "speed": r(s.get("speed")), "approach": r(a), "ttc": r(ttc), "target": s.get("target")}
+            tips[n] = {"dist": r(d), "speed": r(s.get("speed")), "approach": r(a), "ttc": r(ttc), "target": s.get("target"),
+                       "zone": s.get("zone", "")}
         self.series.append({"t": round(t, 3), "frame": self.frames, "risk": self.risk, "score": self.score,
                             "warning": warning, "bleeding": bool(self.info.get("bleeding")), "tips": tips})
 
@@ -257,6 +269,7 @@ class FastLive:
         """Draw the newest tracked frame (called from the display thread, not the capture thread)."""
         with self.lock:
             latest, overlay, omask, risk, fps = getattr(self, "latest", None), self.overlay, self.overlay_mask, self.risk, self.fps
+            zones = self.zones
         if latest is None:
             return None, -1
         img, tips, warning, n = latest
@@ -265,6 +278,10 @@ class FastLive:
         if overlay is not None and overlay.shape == img.shape:
             blend = cv2.addWeighted(img, 0.6, overlay, 0.4, 0)
             out[omask] = blend[omask]
+        if zones is not None and zones.go.shape == img.shape[:2]:
+            from src.safety.dissection_zones import draw as draw_zones
+
+            out = draw_zones(out, zones)
         col = RISK_BGR.get(risk, RISK_BGR["Unavailable"])
         cv2.rectangle(out, (0, 0), (w, 24), col, -1)
         cv2.putText(out, f"Risk: {risk}   {fps:4.1f} fps", (8, 17), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (20, 20, 20), 1, cv2.LINE_AA)

@@ -44,6 +44,8 @@ export function tracks(s: Series, n: number, nearPx = 60, target = "target"): Tr
     color: "#7a5af8", hint: "Instrument mask, Dice 0.84" });
   if (s.pre_contact_warning) out.push({ id: "contact", label: "Contact warning", values: s.pre_contact_warning.map(truthy),
     color: "var(--risk-high)", hint: "Predicted contact within 1 s (distance / approach speed)" });
+  if (s.tip_in_nogo_zone) out.push({ id: "nogo", label: "Tip in No-Go zone", values: s.tip_in_nogo_zone.map(truthy),
+    color: "var(--risk-high)", hint: "Suggested dissection zones: rule-based estimate (GoNoGoNet / SAGES), not validated" });
   const dist = Object.keys(s).filter((c) => c.endsWith("_prox_distance_px"));
   if (dist.length) {
     out.push({ id: "near", label: `Near ${target}`, color: "var(--risk-medium)", hint: `Tip within ${nearPx} px (image space)`,
@@ -75,6 +77,7 @@ export function episodes(t: number[], s: Series, minS = 0.5): Episode[] {
     ...runs(t, (i) => cat[i] === "High", 0.1).map((r) => ({ ...r, kind: "High risk", tone: "err" as const })),
     ...runs(t, (i) => cat[i] === "Medium" || cat[i] === "High", 2).map((r) => ({ ...r, kind: "Sustained medium+ risk", tone: "warn" as const })),
   ];
+  if (s.tip_in_nogo_zone) ev.push(...runs(t, (i) => truthy(s.tip_in_nogo_zone[i]), 0.2).map((r) => ({ ...r, kind: "Tip in No-Go zone", tone: "err" as const })));
   if (s.pre_contact_warning) ev.push(...runs(t, (i) => truthy(s.pre_contact_warning[i]), 0.1).map((r) => ({ ...r, kind: "Pre-contact warning", tone: "err" as const })));
   if (s.bleeding_detected) ev.push(...runs(t, (i) => truthy(s.bleeding_detected[i]), minS).map((r) => ({ ...r, kind: "Bleeding", tone: "err" as const })));
   if (s.cvs_achieved) ev.push(...runs(t, (i) => truthy(s.cvs_achieved[i]), minS).map((r) => ({ ...r, kind: "CVS met", tone: "ok" as const })));
