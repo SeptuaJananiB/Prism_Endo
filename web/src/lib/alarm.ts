@@ -3,7 +3,7 @@
  * Pixabay Content License), one loop per situation:
  *   normal  public/sounds/ekg-normal.mp3  section 1, heartbeat beep (2 kHz, every 1.2 s)   -> graph green (Minimal / Low)
  *   high    public/sounds/ekg-high.mp3    section 2, alarm (500 Hz triples + 3.5 kHz)    -> graph orange (Medium)
- *   touch   public/sounds/ekg-flatline.mp3   section 3, continuous flat-line tone (1 kHz)  -> graph red (High) or tip touching
+ *   touch   public/sounds/ekg-flatline.mp3   section 3, continuous flat-line tone (1 kHz)  -> graph red (High)
  */
 export type Sound = "normal" | "high" | "touch";
 

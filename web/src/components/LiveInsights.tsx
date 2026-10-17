@@ -43,11 +43,10 @@ export function LiveInsights({ jobId }: { jobId: string }) {
   // monitor sound: normal beep (risk Low / Medium), alarm (risk High, contact predicted, No-Go zone),
   // continuous tone (a tip touching tissue)
   // most urgent sound among the frames of the last ~0.3 s (one data update brings several frames)
-  // the sound follows the Risk graph colour: green (Minimal / Low) -> section 1 beeps,
-  // orange (Medium) -> section 2 alarm, red (High, or a tip touching tissue) -> section 3 continuous tone
+  // the sound follows ONLY the Risk graph colour: green (Minimal / Low) -> section 1 beeps,
+  // orange (Medium) -> section 2 alarm, red (High) -> section 3 continuous tone
   const soundOf = (x: LiveSample): Sound | null =>
-    x.risk === "High" || Object.values(x.tips).some((v) => v.dist != null && v.dist <= 0) ? "touch"
-      : x.risk === "Medium" ? "high" : x.risk === "Low" || x.risk === "Minimal" ? "normal" : null;
+    x.risk === "High" ? "touch" : x.risk === "Medium" ? "high" : x.risk === "Low" || x.risk === "Minimal" ? "normal" : null;
   const rankOf = (x: Sound | null) => (x === "touch" ? 3 : x === "high" ? 2 : x === "normal" ? 1 : 0);
   const alarm: Sound | null = !latest ? null : samples.slice(-30).filter((x) => x.t >= latest.t - 0.3)
     .map(soundOf).reduce<Sound | null>((a, b) => (rankOf(b) > rankOf(a) ? b : a), null);
