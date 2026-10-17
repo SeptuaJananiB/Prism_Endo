@@ -2,9 +2,8 @@
  * Operating-theatre monitor sounds cut from the reference EKG monitor recording ("EKG" by freesound_community,
  * Pixabay Content License), one loop per situation:
  *   normal  public/sounds/ekg-normal.mp3  section 1, heartbeat beep (2 kHz, every 1.2 s)   -> risk Low / Medium
- *   high    public/sounds/ekg-high.mp3    section 2, alarm (500 Hz triples + 3.5 kHz)    -> risk High, contact
- *                                                                                           predicted, No-Go zone
- *   touch   public/sounds/ekg-flatline.mp3   section 3, continuous flat-line tone (1 kHz)  -> tip touching tissue
+ *   high    public/sounds/ekg-high.mp3    section 2, alarm (500 Hz triples + 3.5 kHz)    -> risk High
+ *   touch   public/sounds/ekg-flatline.mp3   section 3, continuous flat-line tone (1 kHz)  -> tip touching tissue (distance 0)
  */
 export type Sound = "normal" | "high" | "touch";
 
