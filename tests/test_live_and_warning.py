@@ -79,3 +79,22 @@ def test_fast_live_no_tip_means_no_risk():
     info = fl.frame(img)
     assert info["risk"] == "Minimal" and info["risk_score"] == 0.0
     assert fl.snapshot()["series"][-1]["score"] == 0.0
+
+
+def test_video_file_as_live_camera_is_paced_in_real_time(tmp_path):
+    import time
+
+    import cv2
+
+    from src.utils.video_io import FrameSource, live_target
+
+    assert live_target("video:clip.mp4") == "video:clip.mp4" and live_target("video:") is None
+    p = tmp_path / "clip.avi"
+    w = cv2.VideoWriter(str(p), cv2.VideoWriter_fourcc(*"MJPG"), 20, (64, 48))
+    for _ in range(12):
+        w.write(np.full((48, 64, 3), 128, np.uint8))
+    w.release()
+    t, n = time.perf_counter(), 0
+    for _ in FrameSource(f"video:{p}"):
+        n += 1
+    assert n >= 10 and time.perf_counter() - t >= 0.4   # 12 frames at 20 fps take ~0.6 s, not instant

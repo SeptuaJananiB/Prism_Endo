@@ -42,6 +42,7 @@ export const Sidebar = forwardRef<SidebarHandle, {
   onStart: (b: object) => void; onStop: () => void; onFinish: () => void; job: Job | null; onUploaded: (src: string) => void; open: boolean; onClose: () => void;
 }>(function Sidebar({ meta, runs, current, onOpen, onStart, onStop, onFinish, job, onUploaded, open, onClose }, ref) {
   const [source, setSource] = useState("");
+  const [asLive, setAsLive] = useState(false);   // replay the chosen video file through the live pipeline
   const [surgery, setSurgery] = useState("");
   const [kp, setKp] = useState("hybrid");
   const [maxFrames, setMaxFrames] = useState(0);
@@ -63,7 +64,8 @@ export const Sidebar = forwardRef<SidebarHandle, {
   const tg = targets ?? tissues.map((x) => x.name); // all tissues by default
   const { width, dragging, handleProps } = useResizable("pe-left-width", 320, 272, 480, "right");
   const pct = job?.total ? Math.round((100 * job.done) / job.total) : 0;
-  const isLive = src.startsWith("camera:");
+  const isFile = !!src && !src.startsWith("camera:");
+  const isLive = src.startsWith("camera:") || (isFile && asLive);
 
   const upload = async (f: File | undefined) => {
     if (!f) return;
@@ -109,7 +111,7 @@ export const Sidebar = forwardRef<SidebarHandle, {
           <form className="space-y-7 px-6 py-6" aria-label="New analysis"
             onSubmit={(e) => {
               e.preventDefault();
-              onStart({ source: src, surgery: surg, keypoint_source: kp, max_frames: maxFrames, targets: tg, show_all_tissue: true });
+              onStart({ source: isFile && asLive ? `video:${src}` : src, surgery: surg, keypoint_source: kp, max_frames: maxFrames, targets: tg, show_all_tissue: true });
             }}>
             <Group title="1 · Video">
               <div
@@ -150,6 +152,13 @@ export const Sidebar = forwardRef<SidebarHandle, {
                   }}>{camBusy ? "Searching…" : "Find live cameras"}</button>
                 {camMsg && <span className="text-muted" aria-live="polite">{camMsg}</span>}
               </div>
+              {isFile && (
+                <label className="flex items-start gap-2 text-xs leading-snug text-ink-2">
+                  <input type="checkbox" className="mt-0.5" checked={asLive} disabled={busy} onChange={(e) => setAsLive(e.target.checked)} />
+                  <span><b>Play as live camera</b> · replays this video in real time through live mode, without a webcam in between
+                    (filming a screen blurs and discolours the image and weakens detection)</span>
+                </label>
+              )}
               {isLive && <p className="m-0 text-xs leading-snug text-muted">Live mode analyses the camera in real time (faster settings). Use <b>Finish &amp; save</b> to end the session.</p>}
             </Group>
 

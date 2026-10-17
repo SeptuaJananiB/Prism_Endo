@@ -412,6 +412,11 @@ def start_run(req: RunRequest):
                                  "Wait for it to finish or stop it first.")
     from src.utils.video_io import live_target
 
+    if req.source.lower().startswith("video:"):  # replay a video file as a live camera: resolve and check the file
+        vp = resolve_path(req.source[6:])
+        if not vp.exists():
+            raise HTTPException(400, "input not found")
+        req.source = f"video:{vp}"
     if live_target(req.source) is None and not resolve_path(req.source).exists():
         raise HTTPException(400, "input not found")
     job_id = uuid.uuid4().hex[:8]

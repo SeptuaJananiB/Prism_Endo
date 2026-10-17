@@ -58,13 +58,16 @@ def list_image_frames(folder: Path, pattern: str | None = None) -> list[Path]:
 
 
 def live_target(source) -> int | str | None:
-    """Live capture source: 'camera:N' / 'N' (webcam or capture card) -> int, 'rtsp://...' / 'http(s)://...' -> URL."""
+    """Live capture source: 'camera:N' / 'N' (webcam or capture card) -> int, 'rtsp://...' / 'http(s)://...' -> URL,
+    'video:<path>' -> a video file replayed at its own frame rate through the live pipeline (no camera in between)."""
     s = str(source).strip()
     if s.lower().startswith("camera:") and s[7:].isdigit():
         return int(s[7:])
     if s.isdigit():
         return int(s)
     if s.lower().startswith(("rtsp://", "rtmp://", "http://", "https://", "udp://")):
+        return s
+    if s.lower().startswith("video:") and len(s) > 6:  # a video file played in real time as if it were a camera
         return s
     return None
 
@@ -314,10 +317,50 @@ def to_browser_mp4(src: str | Path, dst: str | Path | None = None) -> Path | Non
     return dst if dst.is_file() and dst.stat().st_size > 0 else None
 
 
+class _PacedVideo:
+    """A video file that behaves like a camera: read() returns frames at the file's own frame rate (real time),
+    so the live pipeline sees the original pixels with no webcam, screen glare or colour shift in between."""
+
+    def __init__(self, path: str):
+        import time
+
+        self._time = time
+        self.cap = cv2.VideoCapture(path)
+        fps = self.cap.get(cv2.CAP_PROP_FPS) or 25.0
+        self.dt = 1.0 / (fps if 1 <= fps <= 120 else 25.0)
+        self.next = None
+
+    def isOpened(self):
+        return self.cap.isOpened()
+
+    def read(self):
+        now = self._time.perf_counter()
+        if self.next is None:
+            self.next = now
+        if self.next > now:
+            self._time.sleep(self.next - now)
+        self.next = max(self.next + self.dt, self._time.perf_counter() - self.dt)  # never run ahead, never pile up
+        return self.cap.read()
+
+    def get(self, prop):
+        return self.cap.get(prop)
+
+    def set(self, *_a):
+        return True
+
+    def release(self):
+        self.cap.release()
+
+
 def _open_live(target: int | str):
     """Open a webcam / capture card (DirectShow on Windows, small buffer) or a network stream with OpenCV."""
     import sys
 
+    if isinstance(target, str) and target.lower().startswith("video:"):
+        cap = _PacedVideo(target[6:])
+        if not cap.isOpened():
+            raise IOError(f"Could not open video {target[6:]}")
+        return cap
     if isinstance(target, int):
         cap = cv2.VideoCapture(target, cv2.CAP_DSHOW) if sys.platform == "win32" else cv2.VideoCapture(target)
     else:
