@@ -1,0 +1,10 @@
+No,Priority,Task,Waiting for,Estimate
+1,Low,"Test tissue model on Endoscapes (new patients, cystic duct)",GPU to be free,1 h
+2,Low,Retry TipNet heatmap network (paused),DLC result,1-2 h GPU
+3,Blocked,Confirm risk event definitions,Clinical review,-
+4,Blocked,Distances in mm instead of pixels,Camera calibration / depth data,-
+5,Blocked,Clinical sign-off: surgeon fills docs/clinical_review_form.html,Surgeon,-
+6,High,Grasper: scale-aware jaw length + grasper DLC on human hinge clicks,Next session,2-3 h
+7,Low,Grasper learned model,~100 human jaw-hinge clicks,-
+8,Low,Clinical sign-off,Surgeon fills docs/clinical_review_form.html,-
+9,Medium,Permanent public URL,Your devtunnel / ngrok / Cloudflare account login,10 min

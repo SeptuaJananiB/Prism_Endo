@@ -1,0 +1,69 @@
+No,Area,Task,Result / evidence
+1,Security,Kaggle API token revoked in your account and verified,Token list empty; old token rejected; local copy deleted
+2,Security,Secrets kept out of git,.gitignore rules for kaggle / access_token / .env
+3,Audit,Whole project re-checked against files and tests,docs/PROJECT_AUDIT.md
+4,Segmentation,17 videos split by patient (no leakage),outputs/splits/video_splits.yaml
+5,Segmentation,Instrument model trained on GPU,"Grasper Dice 0.852, L-hook 0.840 on unseen patients"
+6,Segmentation,Tissue model trained on GPU,Mean Dice 0.735 on unseen patients (old 0.406)
+7,Segmentation,Reliability flag for every tissue,App shows 'tested' / 'NOT tested' next to each target
+8,Segmentation,Flicker reduction (smoothing),"Flicker -21 % tissue, -12 % instrument"
+9,Tips,Your 40 human labels checked,4 doubtful points excluded from scoring
+10,Tips,Grasper point definition agreed,Jaw hinge (your convention)
+11,Tips,Automatic labeller built,"Matches your labels: L-hook 11.7 px, grasper 15.5-17.7 px"
+12,Tips,New grasper method made default,Grasper error 128 px -> 31.9 px; L-hook 22.4 px
+13,Tips,Fallback for partly visible graspers,Risk 'Unavailable' 57/80 -> 10/80 frames
+14,Tips,Automatic labels for all frames except video01,"6,800 frames from 16 videos"
+15,DLC,DLC trained on machine labels (1 video),Rejected: L-hook 339 px off
+16,DLC,"DLC trained on automatic labels (1 video, 60 epochs)","Rejected: L-hook not found, grasper 40.7 px"
+17,DLC,New DLC project from 16 videos,"1,190 frames, 85 clips, 16 videos"
+18,DLC,DLC training dataset prepared,Ready; training started 20:53
+19,EndoVis,"Robotic DLC model trained (79 epochs, GPU)",Held-out sequence: 81 % of joints found
+20,EndoVis,Official test videos found and downloaded,All 910 labelled test frames aligned
+21,EndoVis,Official test-set score,Median error 3.2 px; 79-92 % found on 4 of 6 videos
+22,Data,"CholecSeg8k, all 17 videos","32,320 files, duplicates checked"
+23,Data,Endoscapes downloaded,6.3 GB (adds cystic-duct labels)
+24,Data,Cholec80 checked,"75 GB, no masks -> not downloaded"
+25,Pipeline,"Motion, proximity and risk score",Working end to end
+26,Speed,CPU speed measured,"3.2 fps standard, ~7 fps fast setting (not real-time)"
+27,App,"Tested/untested badges, tidy notices, chart bug fixed",Checked live in Chrome
+28,App,Dashboard crash fixed,src/ui/training_monitor.py
+29,Demo,Motion analysis shown live in Chrome,Speed chart; tracking spikes on grasper 2 found
+30,Tests,Automated tests,"110 passing (13:30, incl. CVS, hybrid, auto-tip, UI tests); legacy 3 pass / 2 skip"
+31,Docs,Full list of work + before/after comparison,docs/ALL_WORK_DONE.md
+32,Safety,Watchdog + GPU-only rule,"DLC training at low priority, 8 of 16 CPU cores"
+33,Status board,Readable status tables (web pages + Excel),status/ folder
+34,DLC,L-hook-balanced training set (v2) built,"1,387 frames; L-hook examples 246 -> 711; 16 videos"
+35,DLC,"DLC #4 trained (16 videos, 30 epochs) and scored on your 40 frames","L-hook 45.8 px (from 243 px at ep20), grasper 64.8 px; current best still 22.4 / 31.9 px"
+36,DLC,DLC v2 epochs 45/50 measured on your 40 frames; best checkpoints backed up,Grasper 17.5-18.9 px (beats 31.9 px); L-hook 34.7 px (ep45) / 249 px (ep50); outputs/models/dlc_v2_keep
+37,Safety,"Auto-restart supervisor (Windows task, every 5 min)",Ran all night; removed by you on 2026-10-11 (schtasks /Delete)
+38,DLC,Overnight autopilot: settling + hybrid test + decision,Choice: geometry_current (outputs/logs/autopilot_decision.json)
+39,Pipeline,"Hybrid keypoint source (DLC on instrument, else geometry)",keypoints.source: hybrid; 4 unit tests; measured overnight
+40,DLC,L-hook labelling set prepared for human clicks,"120 frames, 6 videos (12,18,20,37,52,55), 20 clips; prism-tips-LHOOK-annotator-2026-10-11"
+41,DLC,Your 120-frame L-hook labelling session checked,"96 saved (86 tips + 10 not visible); you vs automatic labels: median 11.8 px, no offset; masks miss the thin hook tip in some frames"
+42,DLC,DLC v3 trained on your L-hook clicks + hybrid made the app default,L-hook 22.4 -> 18.4 px (grasper unchanged 31.9 px); DLC runs automatically for new videos; 108 tests pass
+43,DLC,Checkpoint averaging (epochs 105/110/115) tested,"Hybrid L-hook 18.4 -> 17.5 px (within noise; 3x DLC time) - not adopted, script kept"
+44,Data,Risk datasets checked (logged in),IEEE iAE: no files uploaded; SAGES CVS: not public; CholecTrack20: needs your data-use agreement; Endoscapes CVS: used
+45,Safety model,CVS (Critical View of Safety) model trained on Colab T4 cloud GPU,"Test mAP 0.510 on 40 unseen videos (C1 0.47, C2 0.44, C3 0.62); 60 s/epoch on T4"
+46,DLC,"Wider test on 2 held-out patients (video52/55, your 35 clicks)","DLC/hybrid L-hook 9.8 px, 35/35 found vs geometry 28.6 px, 25/35 (caveat: init model had seen these videos with auto labels)"
+47,Safety model,CVS v2 (higher resolution + regularisation) - FINAL,Val mAP 0.528 (v1 0.484); test mAP 0.539 on 40 unseen videos (v1 0.510)
+48,Safety model,"CVS model downloaded, verified on laptop, added to app/pipeline/video overlay",Laptop CPU re-score test mAP 0.5388 = Colab; outputs/models/cvs_resnet50/v2
+49,Docs,README final results banner,README.md
+50,Data,SurgBlood bleeding dataset downloaded (public test release),"886 frames, 20 clips, surgeon-reviewed bleeding masks"
+51,Measurement,Approximate mm from 5 mm shaft width (*_mm_approx columns),Labelled +-30-50 %; px stay primary; 2 unit tests
+52,Clinical,Clinical review package + fillable sign-off form,"docs/CLINICAL_REVIEW_PACKAGE.md, docs/clinical_review_form.html"
+53,DLC,Provenance audit of all DLC models,Fold model init (v2) had seen video52/55 -> earlier 9.8 px optimistic; outputs/label_qa/provenance.json
+54,Labelling tool,Grasper instructions corrected to jaw hinge,src/ui/label_tips.py
+55,Tips,"Wider grasper test (your 44 clicks, 5 videos)","Geometry hinge 66.9 px median, 40/44 found (video01: 31.9 px). Scale-aware variant worse; not adopted"
+56,Safety model,"Bleeding detector (SurgBlood, Colab T4)","Test (4 unseen clips): detection F1 0.937, AUROC 0.942, region Dice 0.671"
+57,DeepLabCut,CLEAN leakage-free L-hook test (video52/55 never in training),"DLC-only 6.5 px median, 35/35, 91 % within 20 px (docs/DLC_CLEAN_EVALUATION.md)"
+58,Tissue,DSAD fine-tune on Colab T4 (false liver on other surgeries),DSAD test 0.380 -> 0.846; appendicectomy liver 9.9 % -> 4.6 %; NOT adopted (CholecSeg8k 0.735 -> 0.697)
+59,Safety,Watchdog GPU cool-down cycle,240 s run / 45 s pause; laptop stayed on through the DLC run
+60,Tests,Full test suite,112 passed
+61,Tissue,"Guarded local retrain (full data, gallbladder guard)",Guard never met; CholecSeg8k 0.696 vs 0.735 -> NOT adopted; default unchanged
+62,App,Surgery-type switch (gallbladder vs other tissue model),configs/pipeline.yaml tissue.by_surgery; app sidebar
+63,Safety,Bleeding detector in pipeline + app,SurgBlood held-out clips 131/133 bleeding frames flagged; 0 false flags on appendicectomy video
+64,UI,React web app (draft) on :8510 with FastAPI backend,"Synced video/timeline, events, flags, compare, stop, tissue annotation options, light/dark"
+65,UI,Browser test suite (Playwright + axe),"20 tests passing: every control, 4 screen sizes, WCAG 2 AA"
+66,Speed,Model caching + stoppable DLC first run,Settings change starts in 0.3 s (was 10-20 s); Stop in ~0.2 s
+67,Sharing,Public link via Cloudflare quick tunnel,"Temporary URL, full access (user choice)"
+68,UI,React web app made the main app (port 8510); Streamlit drafts retired,"Landing page, AI panel, read-aloud, resizable panels; 21 browser tests pass"

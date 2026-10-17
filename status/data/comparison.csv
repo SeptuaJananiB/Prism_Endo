@@ -1,0 +1,25 @@
+No,Area,Before (earlier work),Now (our work),Change
+1,Instrument segmentation,"Wrong target, Dice 0.26-0.32","Grasper 0.852, L-hook 0.840 (unseen patients)",About 3x better
+2,Tissue segmentation,None,"7 tissues, mean Dice 0.735 (unseen patients)",New
+3,Training data,1 video,"17 videos, split by patient",17x more
+4,Tissue reliability,None,Each tissue marked tested / not tested,New
+5,Flicker,Not handled,"-21 % tissue, -12 % instrument",New
+6,Instrument tip tracking,None,L-hook + up to 2 graspers tracked,New
+7,Tip accuracy (your 40 frames),None,"L-hook 18.4 px (DLC hybrid), grasper 31.9 px (was 128 px)",New; grasper 4x better
+8,Tip labels,None,"40 by you + 6,800 automatic (16 videos)",New
+9,DeepLabCut,None,DLC v3 (trained on your clicks) now improves the app L-hook 22.4 -> 18.4 px,In use
+10,Motion analysis,None,"Speed, direction, gap handling, camera motion",New
+11,Proximity,None,"Pixel distance to tissue, with safety flags",New
+12,Risk score,None,Rule-based with explanations; learned model locked until expert labels,New
+13,Pipeline,Notebooks only,Video in -> annotated video + CSV/JSON out,New
+14,Apps,None,"Main app, dashboard, 2 labelling tools, status board",New
+15,CPU speed,Not measured,"3.2 fps standard, ~7 fps fast (not real-time)",Measured
+16,GPU use,None,AMD RX 6800M for all training,New
+17,Robotic test (EndoVis),None,Official test: median 3.2 px,New
+18,Datasets,None,"CholecSeg8k 17 videos, EndoVis train+test, Endoscapes",New
+19,Tests,"5 tests, 2 failing",110 passing,20x more
+20,Documentation,1 README,9 docs + status board,Much more
+21,Security,API token exposed in chat,Revoked and verified,Fixed
+22,Laptop safety,None,Watchdog (heat / memory / battery),New
+23,Learned safety model,None,"CVS model, test mAP 0.539 on 40 unseen videos (surgeon labels)",New
+24,Cloud GPU,None,Google Colab T4 used (3.2x faster than first attempt),New

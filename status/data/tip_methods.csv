@@ -1,0 +1,16 @@
+No,Tip method,Trained on,L-hook found,L-hook error (median),Grasper found,Grasper error (median),Verdict
+1,Old mask-tip rule,- (geometry),37/37,22.4 px,49/49,128.3 px,Replaced for grasper
+2,New default: hinge geometry,- (geometry),37/37,22.4 px,49/49,31.9 px,Previous default
+3,Automatic labeller (true masks),- (geometry),37/37,11.7 px,49/49,15.5-17.7 px,Used to make labels
+4,DLC #1,"200 machine labels, 1 video",14/37,339 px,8/49,438 px,Rejected
+5,DLC #3,"200 automatic labels, 1 video",0/37,-,23/49,40.7 px,Rejected
+6,TipNet (own network),"5,600 automatic labels, 13 videos",0,-,0,-,Paused (did not learn)
+7,DLC #4,"1,190 automatic labels, 16 videos",33/37 (conf 0.1); 2 confident at 11.4 px,45.8 px (ep20: 243 px),37/49 (conf 0.1),64.8 px,Not adopted yet - improving; continues as v2
+8,DLC #5 (v2),"1,387 auto labels, 16 videos, L-hook x3, continues from #4","37/37 (8 confident at 7.7 px, ep45)",ep45 34.7 / ep50 249 / ep60 226 / ep80 155 px (unstable),49/49,ep45 18.9 / ep50 17.5 / ep60 69 / ep80 76 px,Finished ep80 - not better; settling phase running
+9,DLC final (v2 + settling),"1,387 auto labels, 16 videos",100%,74.1 px,100%,97.1 px,measured overnight
+10,"Hybrid (DLC on instrument, else geometry)","1,387 auto labels, 16 videos",100%,22.4 px,100%,40.6 px,measured overnight
+11,"Hybrid, DLC for grasper only","1,387 auto labels, 16 videos",100%,22.4 px,100%,40.6 px,measured overnight
+12,"Hybrid, DLC for L-hook only","1,387 auto labels, 16 videos",100%,22.4 px,100%,31.9 px,measured overnight
+13,DLC #6 (v3),86 HUMAN L-hook clicks (6 videos) + auto grasper labels; continues from settled DLC,37/37,69.6 px alone (ep110: 31.8),49/49,161.9 px alone,Used inside the hybrid
+14,"HYBRID: DLC v3 for L-hook, geometry for grasper",86 human L-hook clicks + geometry,37/37,18.4 px,49/49,31.9 px,NEW APP DEFAULT (best L-hook so far)
+15,Wider test: DLC hybrid on video52/55 (held out),your clicks from 4 other videos,35/35,9.8 px,-,-,"vs geometry 28.6 px (25/35) on same frames; optimistic, see caveat"
