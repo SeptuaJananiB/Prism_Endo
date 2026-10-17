@@ -42,12 +42,34 @@ export function LiveInsights({ jobId }: { jobId: string }) {
   const latest = samples[samples.length - 1];
   // monitor sound: normal beep (risk Low / Medium), alarm (risk High, contact predicted, No-Go zone),
   // continuous tone (a tip touching tissue)
-  const tipsNow = latest ? Object.values(latest.tips) : [];
-  const alarm: Sound | null = !latest ? null
-    : latest.warning.includes("touching") || tipsNow.some((v) => v.dist != null && v.dist <= 0) ? "touch"
-    : latest.warning || tipsNow.some((v) => v.zone === "no_go") || latest.risk === "High" ? "high"
-    : latest.risk === "Medium" || latest.risk === "Low" ? "normal" : null;
-  useEffect(() => { play(sound ? alarm : null); }, [sound, alarm]);
+  // most urgent sound among the frames of the last ~0.3 s (one data update brings several frames)
+  const soundOf = (x: LiveSample): Sound | null => {
+    const tp = Object.values(x.tips);
+    return x.warning.includes("touching") || tp.some((v) => v.dist != null && v.dist <= 0) ? "touch"
+      : x.warning || tp.some((v) => v.zone === "no_go") || x.risk === "High" ? "high"
+      : x.risk === "Medium" || x.risk === "Low" ? "normal" : null;
+  };
+  const rankOf = (x: Sound | null) => (x === "touch" ? 3 : x === "high" ? 2 : x === "normal" ? 1 : 0);
+  const alarm: Sound | null = !latest ? null : samples.slice(-30).filter((x) => x.t >= latest.t - 0.3)
+    .map(soundOf).reduce<Sound | null>((a, b) => (rankOf(b) > rankOf(a) ? b : a), null);
+  // monitor-style switching: step UP to a more urgent sound at once, step DOWN only after 2 s of calmer frames,
+  // so per-frame flicker never jumps between the three loops
+  const [level, setLevel] = useState<Sound | null>(null);
+  const calmSince = useRef<number | null>(null);
+  useEffect(() => {
+    if (rankOf(alarm) >= rankOf(level)) { calmSince.current = null; if (alarm !== level) setLevel(alarm); return; }
+    const now = performance.now();
+    calmSince.current ??= now;
+    if (now - calmSince.current >= 2000) { calmSince.current = null; setLevel(alarm); }
+  }, [alarm, level, latest?.frame]);
+  // only the tab you are looking at plays (two open tabs would otherwise sound together)
+  const [visible, setVisible] = useState(() => document.visibilityState === "visible");
+  useEffect(() => {
+    const on = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", on);
+    return () => document.removeEventListener("visibilitychange", on);
+  }, []);
+  useEffect(() => { play(sound && visible ? level : null); }, [sound, visible, level]);
   useEffect(() => () => play(null), []);
   const toggleSound = () => {
     const on = !sound;
@@ -99,7 +121,7 @@ export function LiveInsights({ jobId }: { jobId: string }) {
       <div className="min-w-0 border-line p-4 @4xl:border-r">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="m-0 text-[13px] font-semibold">Live signals <span className="font-normal text-muted tabular">· every frame · {end == null ? `last ${span < 60 ? span.toFixed(0) + " s" : (span / 60).toFixed(1) + " min"}` : "scrolled back"} · {(last?.t ?? 0).toFixed(1)} s · frame {last?.frame ?? 0}</span></h3>
-          <button className={`btn h-7 px-2.5 text-xs ${sound && (alarm === "high" || alarm === "touch") ? "border-err text-err" : ""}`} onClick={toggleSound} aria-pressed={sound}
+          <button className={`btn h-7 px-2.5 text-xs ${sound && (level === "high" || level === "touch") ? "border-err text-err" : ""}`} onClick={toggleSound} aria-pressed={sound}
             title={sound ? "Monitor sound on: beep for Low / Medium risk, alarm for High risk or a predicted contact, continuous tone when a tip touches tissue" : "Alarm sound off"}>
             {sound ? "🔔 Sound on" : "🔕 Sound off"}</button>
           <div role="tablist" aria-label="Live signal" className="flex gap-1 rounded-lg bg-[var(--surface-2)] p-0.5">
