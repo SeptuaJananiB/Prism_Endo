@@ -4,14 +4,14 @@
  *   normal  public/sounds/ekg-normal.mp3  section 1, heartbeat beep (2 kHz, every 1.2 s)   -> risk Low / Medium
  *   high    public/sounds/ekg-high.mp3    section 2, alarm (500 Hz triples + 3.5 kHz)    -> risk High, contact
  *                                                                                           predicted, No-Go zone
- *   touch   public/sounds/ekg-touch.mp3   section 3, continuous flat-line tone (1 kHz)  -> tip touching tissue
+ *   touch   public/sounds/ekg-flatline.mp3   section 3, continuous flat-line tone (1 kHz)  -> tip touching tissue
  */
 export type Sound = "normal" | "high" | "touch";
 
 const FILES: Record<Sound, string> = {
   normal: "/sounds/ekg-normal.mp3",
   high: "/sounds/ekg-high.mp3",
-  touch: "/sounds/ekg-touch.mp3",
+  touch: "/sounds/ekg-flatline.mp3",
 };
 
 let ctx: AudioContext | null = null;
