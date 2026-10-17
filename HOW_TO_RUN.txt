@@ -1,0 +1,35 @@
+PRISM-Endo - how to run
+=======================
+
+1. Install Python 3.11 (one time)
+   https://www.python.org/downloads/release/python-3119/  ->  "Windows installer (64-bit)"
+   IMPORTANT: on the first installer screen tick "Add python.exe to PATH".
+
+2. Unzip PRISM-Endo-share.zip to a normal folder (e.g. Documents\PRISM-Endo).
+   Do not run it from inside the zip.
+
+3. Double-click START.bat
+   - First time: it installs everything (needs internet, about 10 minutes). Wait until the browser opens.
+   - Next times: starts in seconds.
+   - Keep the black window open while using the app. Close it to stop the app.
+   The app opens at http://localhost:8510 (open that address yourself if the browser does not open).
+
+4. Use the app
+   - Left panel: pick a sample video in "Video to analyse" (or drop your own MP4), keep the settings, click Analyse.
+     Gallbladder videos: Surgery type "Gallbladder". Appendix / bowel videos: "Other abdominal".
+   - When it finishes: watch the annotated video, the risk timeline and the events.
+   - Click "AI" at the top -> "Explain this analysis" for a written report (Listen reads it aloud).
+   - Live mode: tick "Play as live camera" under the video to replay it in real time with live graphs and
+     monitor sounds, or "Find live cameras" for a capture card. "Finish & save" keeps the session.
+
+Good to know
+   - Runs on the computer's processor (no special graphics card needed); about 2 frames per second.
+     A 10-second clip takes about 2 minutes.
+   - Everything stays on this computer. Only the "Explain" button sends the analysis numbers (never video)
+     to the AI service.
+   - Results are saved in outputsuns\<video name>\.
+
+Problems
+   - "Python 3.11 is required": install Python (step 1) with "Add to PATH" ticked, then run START.bat again.
+   - Install failed: check the internet connection and run START.bat again.
+   - Page does not load: wait 20 seconds and refresh; keep the black window open.
