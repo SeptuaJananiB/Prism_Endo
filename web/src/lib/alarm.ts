@@ -2,10 +2,11 @@
  * Audible alarms modelled on IEC 60601-1-8 (medical alarm systems), generated with the Web Audio API.
  *  - high priority:   10 fast pulses per burst (3 + 2, pause, 3 + 2)      -> contact warning, tip in No-Go zone
  *  - medium priority: 3 slower pulses per burst                           -> risk High
+ *  - low priority:    2 even slower, softer pulses                         -> risk Medium ("lowest": 1 pulse -> risk Low)
  * Tone: 440 Hz fundamental plus 3 harmonics (the standard asks for >= 4 spectral peaks within 15 dB, 150-1000 Hz
  * fundamental), with short ramps so pulses do not click.
  */
-export type Priority = "high" | "medium";
+export type Priority = "high" | "medium" | "low" | "lowest";
 
 let ctx: AudioContext | null = null;
 
@@ -49,6 +50,11 @@ export function playBurst(p: Priority, volume = 0.25): number {
     const at = [0, 0.25, 0.5, 1.0, 1.25, 2.2, 2.45, 2.7, 3.2, 3.45];
     at.forEach((s) => pulse(ac, t0 + s, 0.15, 523, volume));
     return 3.6;
+  }
+  if (p === "low" || p === "lowest") {
+    // low: 1 or 2 soft pulses, 250 ms long, 500 ms apart
+    (p === "low" ? [0, 0.5] : [0]).forEach((s) => pulse(ac, t0 + s, 0.25, 392, volume * 0.5));
+    return p === "low" ? 0.8 : 0.3;
   }
   // medium: 3 pulses, 200 ms long, 300 ms apart
   [0, 0.3, 0.6].forEach((s) => pulse(ac, t0 + s, 0.2, 440, volume * 0.8));

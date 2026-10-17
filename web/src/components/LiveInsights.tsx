@@ -20,10 +20,11 @@ export function LiveInsights({ jobId }: { jobId: string }) {
   const [end, setEnd] = useState<number | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; end: number } | null>(null);
-  // audible alarm (IEC 60601-1-8 style): high = contact warning / tip in No-Go zone, medium = risk High
+  // audible alarm (IEC 60601-1-8 style): high = contact warning / tip in No-Go zone, medium = risk High,
+  // low = risk Medium (2 soft beeps / 15 s), lowest = risk Low (1 soft beep / 20 s)
   const [sound, setSound] = useState(() => { try { return localStorage.getItem("prism-alarm") !== "off"; } catch { return true; } });
   const busyUntil = useRef(0);
-  const lastMedium = useRef(0);
+  const lastAt = useRef<Record<string, number>>({});
 
   useEffect(() => {
     let alive = true, since = 0, timer = 0;
@@ -44,15 +45,16 @@ export function LiveInsights({ jobId }: { jobId: string }) {
   const latest = samples[samples.length - 1];
   const alarm: Priority | null = !latest ? null
     : latest.warning || Object.values(latest.tips).some((v) => v.zone === "no_go") ? "high"
-    : latest.risk === "High" ? "medium" : null;
+    : latest.risk === "High" ? "medium" : latest.risk === "Medium" ? "low" : latest.risk === "Low" ? "lowest" : null;
   useEffect(() => {
     if (!sound || !alarm) return;
     const now = performance.now();
     if (now < busyUntil.current) return;                                   // a burst is still playing
-    if (alarm === "medium" && now - lastMedium.current < 8000) return;     // medium repeats every 8 s
+    const gap = { high: 0, medium: 8000, low: 15000, lowest: 20000 }[alarm];  // repeat interval per priority
+    if (gap && now - (lastAt.current[alarm] ?? -1e9) < gap) return;
     const len = playBurst(alarm);
     busyUntil.current = now + len * 1000 + (alarm === "high" ? 400 : 0);  // high repeats back to back
-    if (alarm === "medium") lastMedium.current = now;
+    lastAt.current[alarm] = now;
   }, [alarm, sound, latest?.frame]);
   const toggleSound = () => {
     const on = !sound;
@@ -104,8 +106,8 @@ export function LiveInsights({ jobId }: { jobId: string }) {
       <div className="min-w-0 border-line p-4 @4xl:border-r">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="m-0 text-[13px] font-semibold">Live signals <span className="font-normal text-muted tabular">· every frame · {end == null ? `last ${span < 60 ? span.toFixed(0) + " s" : (span / 60).toFixed(1) + " min"}` : "scrolled back"} · {(last?.t ?? 0).toFixed(1)} s · frame {last?.frame ?? 0}</span></h3>
-          <button className={`btn h-7 px-2.5 text-xs ${sound && alarm ? "border-err text-err" : ""}`} onClick={toggleSound} aria-pressed={sound}
-            title={sound ? "Alarm sound on: beeps for contact warnings, No-Go zone and High risk" : "Alarm sound off"}>
+          <button className={`btn h-7 px-2.5 text-xs ${sound && (alarm === "high" || alarm === "medium") ? "border-err text-err" : ""}`} onClick={toggleSound} aria-pressed={sound}
+            title={sound ? "Alarm sound on: contact warning / No-Go zone (fast), High risk (3 beeps), Medium (2 soft), Low (1 soft)" : "Alarm sound off"}>
             {sound ? "🔔 Sound on" : "🔕 Sound off"}</button>
           <div role="tablist" aria-label="Live signal" className="flex gap-1 rounded-lg bg-[var(--surface-2)] p-0.5">
             {VIEWS.map((v) => (
