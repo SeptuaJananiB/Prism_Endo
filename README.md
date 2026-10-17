@@ -344,6 +344,7 @@ Each analysis is saved in `outputs/runs/<video>/`:
 | 🤖 [**AGENTS.md**](AGENTS.md) | Rules and conventions for coding tools working on this repo |
 | 🎨 [**DESIGN_SYSTEM.md**](DESIGN_SYSTEM.md) | Web app tokens, typography, components, accessibility |
 | ✅ [**QA_REPORT.md**](QA_REPORT.md) | Test strategy, coverage, defects found and fixed |
+| ⬇️ [DOWNLOAD_LINKS.md](DOWNLOAD_LINKS.md) | Download links for datasets, software and everything not in the repo |
 | 🔍 [docs/GAP_ANALYSIS.md](docs/GAP_ANALYSIS.md) | Gaps in surgical risk prediction and how PRISM-Endo addresses them |
 | 🟩 [docs/DISSECTION_ZONES.md](docs/DISSECTION_ZONES.md) | Go / No-Go zones: literature, rules, limits |
 | 🛠️ [docs/TECHNICAL_GUIDE.md](docs/TECHNICAL_GUIDE.md) | Every command, training run and measurement |
