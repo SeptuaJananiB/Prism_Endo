@@ -19,6 +19,13 @@ if not exist ".venv\Scripts\python.exe" (
   ".venv\Scripts\python.exe" -m pip install -r requirements.txt || (echo Package install failed - check the internet connection. & pause & exit /b 1)
 )
 
+if not exist "outputs\models\instrument_seg_multivideo\best.pt" (
+  echo Downloading the trained models - first run only, about 1 GB...
+  curl.exe -L --fail -o prism-endo-models.zip https://github.com/SeptuaJananiB/Prism_Endo/releases/download/models-v1/prism-endo-models.zip || (echo Model download failed - check the internet connection. & pause & exit /b 1)
+  tar -xf prism-endo-models.zip || (echo Could not unpack the models. & pause & exit /b 1)
+  del prism-endo-models.zip
+)
+
 echo [3/3] Starting PRISM-Endo at http://localhost:8510  (close this window to stop)
 start "" cmd /c "timeout /t 10 >nul & start http://localhost:8510"
 ".venv\Scripts\python.exe" -m uvicorn src.api.server:app --port 8510 --host 127.0.0.1

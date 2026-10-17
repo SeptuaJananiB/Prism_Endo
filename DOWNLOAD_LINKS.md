@@ -15,6 +15,17 @@ Everything that is **not** inside the handover zip (`final_endo.zip`), where to 
 
 ---
 
+## 1b. Trained models
+
+| What | Link |
+|---|---|
+| All trained models (~1 GB, unzip into the project folder; `START.bat` does this automatically) | <https://github.com/SeptuaJananiB/Prism_Endo/releases/download/models-v1/prism-endo-models.zip> |
+| Release page with the model list and results | <https://github.com/SeptuaJananiB/Prism_Endo/releases/tag/models-v1> |
+
+So the project can be rebuilt from GitHub alone: download the code, double-click `START.bat` (it fetches the models).
+
+---
+
 ## 2. Training and evaluation datasets
 
 Put each dataset in the folder shown (inside the project folder). Sizes are what this project used.
@@ -57,9 +68,8 @@ final trained models are already in the zip.
 |---|---|---|
 | `outputs/dlc_projects/` (19 GB) | DeepLabCut training projects (labelled frames, intermediate files) | Re-create with the DLC scripts in `scripts/` after downloading the datasets (see `docs/TECHNICAL_GUIDE.md`) |
 | `last.pt` files | "resume training" checkpoints | Only to continue an interrupted training run; re-train instead |
-| `outputs/models/dlc_v2_keep/` | old, rejected DeepLabCut model backup | Not needed |
+| `outputs/models/dlc_v2_keep/` | old, rejected DeepLabCut model backup | Not needed (not in the models download) |
 | `.venv*` folders | Python environments | `START.bat` re-creates them |
 | `outputs/runs/` | saved analyses from the original computer | Re-analyse any video in the app |
 
-> **Keep a copy of `final_endo.zip`** (for example on Google Drive). The trained models exist only in that zip; the
-> datasets above can always be downloaded again, but re-training the models takes many hours.
+> The trained models are also published on GitHub (section 1b), so they stay downloadable even without the zip.
