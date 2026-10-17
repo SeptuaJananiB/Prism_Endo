@@ -43,11 +43,11 @@ export function LiveInsights({ jobId }: { jobId: string }) {
   // monitor sound: normal beep (risk Low / Medium), alarm (risk High, contact predicted, No-Go zone),
   // continuous tone (a tip touching tissue)
   // most urgent sound among the frames of the last ~0.3 s (one data update brings several frames)
-  // the sound follows the graphs: Risk graph High -> alarm, Low / Medium -> beep, Minimal -> silent;
-  // Distance graph at 0 (a tip touching tissue) -> flat-line tone
+  // the sound follows the Risk graph colour: green (Minimal / Low) -> section 1 beeps,
+  // orange (Medium) -> section 2 alarm, red (High, or a tip touching tissue) -> section 3 continuous tone
   const soundOf = (x: LiveSample): Sound | null =>
-    Object.values(x.tips).some((v) => v.dist != null && v.dist <= 0) ? "touch"
-      : x.risk === "High" ? "high" : x.risk === "Medium" || x.risk === "Low" ? "normal" : null;
+    x.risk === "High" || Object.values(x.tips).some((v) => v.dist != null && v.dist <= 0) ? "touch"
+      : x.risk === "Medium" ? "high" : x.risk === "Low" || x.risk === "Minimal" ? "normal" : null;
   const rankOf = (x: Sound | null) => (x === "touch" ? 3 : x === "high" ? 2 : x === "normal" ? 1 : 0);
   const alarm: Sound | null = !latest ? null : samples.slice(-30).filter((x) => x.t >= latest.t - 0.3)
     .map(soundOf).reduce<Sound | null>((a, b) => (rankOf(b) > rankOf(a) ? b : a), null);
@@ -121,7 +121,7 @@ export function LiveInsights({ jobId }: { jobId: string }) {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="m-0 text-[13px] font-semibold">Live signals <span className="font-normal text-muted tabular">· every frame · {end == null ? `last ${span < 60 ? span.toFixed(0) + " s" : (span / 60).toFixed(1) + " min"}` : "scrolled back"} · {(last?.t ?? 0).toFixed(1)} s · frame {last?.frame ?? 0}</span></h3>
           <button className={`btn h-7 px-2.5 text-xs ${sound && (level === "high" || level === "touch") ? "border-err text-err" : ""}`} onClick={toggleSound} aria-pressed={sound}
-            title={sound ? "Monitor sound follows the graphs: beep for Risk Low / Medium, alarm for Risk High, flat-line when Distance is 0" : "Alarm sound off"}>
+            title={sound ? "Monitor sound follows the Risk graph colour: green = beeps, orange = alarm, red = continuous tone" : "Alarm sound off"}>
             {sound ? "🔔 Sound on" : "🔕 Sound off"}</button>
           <div role="tablist" aria-label="Live signal" className="flex gap-1 rounded-lg bg-[var(--surface-2)] p-0.5">
             {VIEWS.map((v) => (
@@ -147,9 +147,10 @@ export function LiveInsights({ jobId }: { jobId: string }) {
         {samples.length > 1 && (
           <p className="m-0 mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted" aria-live="polite">
             <span className="font-medium text-ink-2">Sound:</span>
-            {([["normal", "beep · Risk Low / Medium"], ["high", "alarm · Risk High"], ["touch", "flat-line · Distance 0 (touching)"]] as const).map(([k, l]) => (
-              <span key={k} className={sound && level === k ? `font-semibold ${k === "normal" ? "text-ink" : "text-err"}` : ""}>{sound && level === k ? "▶ " : ""}{l}</span>))}
-            {(!sound || !level) && <span>· {sound ? "silent (Risk Minimal)" : "muted"}</span>}
+            {([["normal", "var(--risk-low)", "green · beeps"], ["high", "var(--risk-medium)", "orange · alarm"], ["touch", "var(--risk-high)", "red · continuous tone"]] as const).map(([k, c, l]) => (
+              <span key={k} className={`flex items-center gap-1 ${sound && level === k ? "font-semibold text-ink" : ""}`}>
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: c }} aria-hidden />{sound && level === k ? "▶ " : ""}{l}</span>))}
+            {(!sound || !level) && <span>· {sound ? "silent" : "muted"}</span>}
           </p>
         )}
         {samples.length > 1 && (
