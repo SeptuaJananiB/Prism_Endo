@@ -107,7 +107,7 @@ export function LiveInsights({ jobId }: { jobId: string }) {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="m-0 text-[13px] font-semibold">Live signals <span className="font-normal text-muted tabular">· every frame · {end == null ? `last ${span < 60 ? span.toFixed(0) + " s" : (span / 60).toFixed(1) + " min"}` : "scrolled back"} · {(last?.t ?? 0).toFixed(1)} s · frame {last?.frame ?? 0}</span></h3>
           <button className={`btn h-7 px-2.5 text-xs ${sound && (alarm === "high" || alarm === "medium") ? "border-err text-err" : ""}`} onClick={toggleSound} aria-pressed={sound}
-            title={sound ? "Monitor beep on: faster and higher as risk rises (Low, Medium, High); rapid triple beeps for contact warning / No-Go zone" : "Alarm sound off"}>
+            title={sound ? "Monitor beep on: faster as risk rises (Low, Medium, High); rapid triple beeps for contact warning / No-Go zone" : "Alarm sound off"}>
             {sound ? "🔔 Sound on" : "🔕 Sound off"}</button>
           <div role="tablist" aria-label="Live signal" className="flex gap-1 rounded-lg bg-[var(--surface-2)] p-0.5">
             {VIEWS.map((v) => (
