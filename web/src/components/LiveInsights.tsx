@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type LiveData, type LiveSample } from "../lib/api";
 import { LineChart, RISK_VAR } from "./Charts";
-import { startMonitor, stopMonitor, unlockAudio, type Priority } from "../lib/alarm";
+import { play, unlockAudio, type Sound } from "../lib/alarm";
 
 type View = "distance" | "speed" | "ttc" | "risk";
 const VIEWS: { id: View; label: string }[] = [
@@ -20,7 +20,7 @@ export function LiveInsights({ jobId }: { jobId: string }) {
   const [end, setEnd] = useState<number | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; end: number } | null>(null);
-  // operating-theatre monitor sound (reference EKG recording) while risk is Low or above, or a warning is active
+  // operating-theatre monitor sound, three loops cut from the reference EKG recording (see lib/alarm.ts)
   const [sound, setSound] = useState(() => { try { return localStorage.getItem("prism-alarm") !== "off"; } catch { return true; } });
 
   useEffect(() => {
@@ -40,13 +40,15 @@ export function LiveInsights({ jobId }: { jobId: string }) {
   }, [jobId]);
 
   const latest = samples[samples.length - 1];
-  const alarm: Priority | null = !latest ? null
-    : latest.warning || Object.values(latest.tips).some((v) => v.zone === "no_go") ? "high"
-    : latest.risk === "High" ? "medium" : latest.risk === "Medium" ? "low" : latest.risk === "Low" ? "lowest" : null;
-  // the reference EKG recording plays as-is while any risk / warning is active, and stops at Minimal
-  const playing = sound && !!alarm;
-  useEffect(() => { if (playing) startMonitor(); else stopMonitor(); }, [playing]);
-  useEffect(() => () => stopMonitor(), []);
+  // monitor sound: normal beep (risk Low / Medium), alarm (risk High, contact predicted, No-Go zone),
+  // continuous tone (a tip touching tissue)
+  const tipsNow = latest ? Object.values(latest.tips) : [];
+  const alarm: Sound | null = !latest ? null
+    : latest.warning.includes("touching") || tipsNow.some((v) => v.dist != null && v.dist <= 0) ? "touch"
+    : latest.warning || tipsNow.some((v) => v.zone === "no_go") || latest.risk === "High" ? "high"
+    : latest.risk === "Medium" || latest.risk === "Low" ? "normal" : null;
+  useEffect(() => { play(sound ? alarm : null); }, [sound, alarm]);
+  useEffect(() => () => play(null), []);
   const toggleSound = () => {
     const on = !sound;
     if (on) unlockAudio();
@@ -97,8 +99,8 @@ export function LiveInsights({ jobId }: { jobId: string }) {
       <div className="min-w-0 border-line p-4 @4xl:border-r">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="m-0 text-[13px] font-semibold">Live signals <span className="font-normal text-muted tabular">· every frame · {end == null ? `last ${span < 60 ? span.toFixed(0) + " s" : (span / 60).toFixed(1) + " min"}` : "scrolled back"} · {(last?.t ?? 0).toFixed(1)} s · frame {last?.frame ?? 0}</span></h3>
-          <button className={`btn h-7 px-2.5 text-xs ${sound && (alarm === "high" || alarm === "medium") ? "border-err text-err" : ""}`} onClick={toggleSound} aria-pressed={sound}
-            title={sound ? "Monitor sound on: plays the EKG monitor recording while risk is Low or above, or a warning is active" : "Alarm sound off"}>
+          <button className={`btn h-7 px-2.5 text-xs ${sound && (alarm === "high" || alarm === "touch") ? "border-err text-err" : ""}`} onClick={toggleSound} aria-pressed={sound}
+            title={sound ? "Monitor sound on: beep for Low / Medium risk, alarm for High risk or a predicted contact, continuous tone when a tip touches tissue" : "Alarm sound off"}>
             {sound ? "🔔 Sound on" : "🔕 Sound off"}</button>
           <div role="tablist" aria-label="Live signal" className="flex gap-1 rounded-lg bg-[var(--surface-2)] p-0.5">
             {VIEWS.map((v) => (
