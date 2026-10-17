@@ -71,6 +71,11 @@ flowchart LR
 
 ## 🚀 Quick start
 
+> [!TIP]
+> **Plug and play (shared zip).** Unzip, then double-click **`START.bat`**. The first run installs Python packages
+> (internet needed, ~10 min); after that it starts in seconds and opens <http://localhost:8510>. Needs only
+> [Python 3.11](https://www.python.org/downloads/release/python-3119/) (tick *Add python.exe to PATH*).
+
 <details open>
 <summary><b>Option A: Web app (recommended)</b></summary>
 
