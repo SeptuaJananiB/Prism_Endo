@@ -1,12 +1,19 @@
 /**
- * Audible alarms modelled on IEC 60601-1-8 (medical alarm systems), generated with the Web Audio API.
- *  - high priority:   10 fast pulses per burst (3 + 2, pause, 3 + 2)      -> contact warning, tip in No-Go zone
- *  - medium priority: 3 slower pulses per burst                           -> risk High
- *  - low priority:    2 even slower, softer pulses                         -> risk Medium ("lowest": 1 pulse -> risk Low)
- * Tone: 440 Hz fundamental plus 3 harmonics (the standard asks for >= 4 spectral peaks within 15 dB, 150-1000 Hz
- * fundamental), with short ramps so pulses do not click.
+ * Operating-theatre monitor beeps (like an ECG / pulse-oximeter monitor), generated with the Web Audio API.
+ * One short, pure tone; the beep gets FASTER and slightly HIGHER as the situation gets worse:
+ *   lowest (risk Low)      1 beep every 2 s
+ *   low    (risk Medium)   1 beep every 1 s
+ *   medium (risk High)     2 beeps per second
+ *   high   (contact warning / tip in No-Go zone)  rapid triple beeps, continuous
  */
 export type Priority = "high" | "medium" | "low" | "lowest";
+
+export const BEEP: Record<Priority, { every: number; freq: number; count: number; gap: number }> = {
+  lowest: { every: 2000, freq: 880, count: 1, gap: 0 },
+  low: { every: 1000, freq: 940, count: 1, gap: 0 },
+  medium: { every: 500, freq: 1000, count: 1, gap: 0 },
+  high: { every: 700, freq: 1100, count: 3, gap: 0.12 },
+};
 
 let ctx: AudioContext | null = null;
 
@@ -21,42 +28,26 @@ export function unlockAudio(): AudioContext | null {
   }
 }
 
-function pulse(ac: AudioContext, start: number, dur: number, f0: number, gain: number) {
-  const out = ac.createGain();
-  out.gain.setValueAtTime(0, start);
-  out.gain.linearRampToValueAtTime(gain, start + 0.02);          // rise
-  out.gain.setValueAtTime(gain, start + dur - 0.03);
-  out.gain.linearRampToValueAtTime(0, start + dur);               // fall
-  out.connect(ac.destination);
-  [1, 2, 3, 4].forEach((h, i) => {                               // fundamental + 3 harmonics
-    const o = ac.createOscillator();
-    const g = ac.createGain();
-    o.type = "sine";
-    o.frequency.value = f0 * h;
-    g.gain.value = [1, 0.6, 0.45, 0.35][i];
-    o.connect(g).connect(out);
-    o.start(start);
-    o.stop(start + dur + 0.01);
-  });
+/** One monitor beep: pure sine, ~90 ms, quick attack and release so it sounds clean, not clicky. */
+function beep(ac: AudioContext, start: number, freq: number, volume: number) {
+  const o = ac.createOscillator();
+  const g = ac.createGain();
+  o.type = "sine";
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0, start);
+  g.gain.linearRampToValueAtTime(volume, start + 0.005);
+  g.gain.setValueAtTime(volume, start + 0.07);
+  g.gain.exponentialRampToValueAtTime(0.0001, start + 0.09);
+  o.connect(g).connect(ac.destination);
+  o.start(start);
+  o.stop(start + 0.1);
 }
 
-/** Play one alarm burst. Returns its length in seconds. */
-export function playBurst(p: Priority, volume = 0.25): number {
+/** Play the beep(s) for one tick of this level. */
+export function playBurst(p: Priority, volume = 0.3): void {
   const ac = unlockAudio();
-  if (!ac || ac.state !== "running") return 0;
-  const t0 = ac.currentTime + 0.02;
-  if (p === "high") {
-    // 3 + 2 pulses, pause, 3 + 2 pulses (150 ms pulses, 100 ms apart)
-    const at = [0, 0.25, 0.5, 1.0, 1.25, 2.2, 2.45, 2.7, 3.2, 3.45];
-    at.forEach((s) => pulse(ac, t0 + s, 0.15, 523, volume));
-    return 3.6;
-  }
-  if (p === "low" || p === "lowest") {
-    // low: 1 or 2 soft pulses, 250 ms long, 500 ms apart
-    (p === "low" ? [0, 0.5] : [0]).forEach((s) => pulse(ac, t0 + s, 0.25, 392, volume * 0.5));
-    return p === "low" ? 0.8 : 0.3;
-  }
-  // medium: 3 pulses, 200 ms long, 300 ms apart
-  [0, 0.3, 0.6].forEach((s) => pulse(ac, t0 + s, 0.2, 440, volume * 0.8));
-  return 0.8;
+  if (!ac || ac.state !== "running") return;
+  const b = BEEP[p];
+  const t0 = ac.currentTime + 0.01;
+  for (let i = 0; i < b.count; i++) beep(ac, t0 + i * b.gap, b.freq, volume);
 }
