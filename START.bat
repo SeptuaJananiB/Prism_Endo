@@ -26,6 +26,11 @@ if not exist "outputs\models\instrument_seg_multivideo\best.pt" (
   del prism-endo-models.zip
 )
 
+if not exist "Videos\*.mp4" (
+  echo Downloading the test videos - first run only, about 16 MB...
+  curl.exe -L --fail -o prism-endo-test-videos.zip https://github.com/SeptuaJananiB/Prism_Endo/releases/download/models-v1/prism-endo-test-videos.zip && tar -xf prism-endo-test-videos.zip && del prism-endo-test-videos.zip
+)
+
 echo [3/3] Starting PRISM-Endo at http://localhost:8510  (close this window to stop)
 start "" cmd /c "timeout /t 10 >nul & start http://localhost:8510"
 ".venv\Scripts\python.exe" -m uvicorn src.api.server:app --port 8510 --host 127.0.0.1

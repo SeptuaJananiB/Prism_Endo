@@ -15,11 +15,12 @@ Everything that is **not** inside the handover zip (`final_endo.zip`), where to 
 
 ---
 
-## 1b. Trained models
+## 1b. Trained models and test videos
 
 | What | Link |
 |---|---|
 | All trained models (~1 GB, unzip into the project folder; `START.bat` does this automatically) | <https://github.com/SeptuaJananiB/Prism_Endo/releases/download/models-v1/prism-endo-models.zip> |
+| 23 test videos (~16 MB, short CholecSeg8k clips incl. the held-out tip-evaluation clips; unzip into the project folder, `START.bat` does this automatically) | <https://github.com/SeptuaJananiB/Prism_Endo/releases/download/models-v1/prism-endo-test-videos.zip> |
 | Release page with the model list and results | <https://github.com/SeptuaJananiB/Prism_Endo/releases/tag/models-v1> |
 
 So the project can be rebuilt from GitHub alone: download the code, double-click `START.bat` (it fetches the models).
