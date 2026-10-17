@@ -13,7 +13,7 @@ Synthethgic Videa_dataset/
 .idea/
 .vscode/
 video01/
-data/
+/data/
 # credentials - never commit
 .kaggle/
 kaggle.json
